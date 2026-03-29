@@ -8911,6 +8911,7 @@ ATExecAddGeneratedAsExprStored(AlteredTableInfo *tab,
 	NewColumnValue *newval;
 	RawColumnDefault *rawEnt;
 	Relation	pg_attribute;
+	bool		rewrite;
 
 	Assert(def->raw_expr != NULL);
 	Assert(def->cooked_expr == NULL);
@@ -8974,29 +8975,36 @@ ATExecAddGeneratedAsExprStored(AlteredTableInfo *tab,
 	/* Make above changes visible */
 	CommandCounterIncrement();
 
-	/*
-	 * Clear all the missing values if we're rewriting the table, since this
-	 * renders them pointless.
-	 */
-	RelationClearMissing(rel);
-
-	/* Make above changes visible */
-	CommandCounterIncrement();
-
-	/* Drop any pg_statistic entry for the column */
-	RemoveStatistics(RelationGetRelid(rel), attnum);
-
 	/* Build a concrete expression for the new default (generated) value */
 	defval = (Expr *) build_column_default(rel, attnum);
 	defval = expression_planner(defval);
 
-	/* Schedule a rewrite */
-	newval = palloc0_object(NewColumnValue);
-	newval->attnum = attnum;
-	newval->expr = defval;
-	newval->is_generated = true;
-	tab->newvals = lappend(tab->newvals, newval);
-	tab->rewrite |= AT_REWRITE_DEFAULT_VAL;
+	rewrite = !findStructuralCheckConstraintOnAttr(RelationGetRelid(rel),
+												   attnum,
+												   (Node *) defval);
+
+	if (rewrite)
+	{
+		/*
+		 * Clear all the missing values if we're rewriting the table, since
+		 * this renders them pointless.
+		 */
+		RelationClearMissing(rel);
+
+		/* Make above changes visible */
+		CommandCounterIncrement();
+
+		/* Drop any pg_statistic entry for the column */
+		RemoveStatistics(RelationGetRelid(rel), attnum);
+
+		/* Schedule a rewrite */
+		newval = palloc0_object(NewColumnValue);
+		newval->attnum = attnum;
+		newval->expr = defval;
+		newval->is_generated = true;
+		tab->newvals = lappend(tab->newvals, newval);
+		tab->rewrite |= AT_REWRITE_DEFAULT_VAL;
+	}
 
 	InvokeObjectPostAlterHook(RelationRelationId,
 							  RelationGetRelid(rel), attnum);
