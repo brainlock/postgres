@@ -3198,6 +3198,153 @@ select pg_relation_filenode('testgen.idx_b') as idx_filenode_after \gset
 select :idx_filenode_before != :idx_filenode_after as did_rewrite_idx;
 drop table testgen.t3;
 
+-- turning a regular column into a stored generated column
+-- without rewriting the table (when a check constraint proves it isn't needed)
+create table testgen.t4 (a int, b int not null);
+insert into testgen.t4 (a, b) select x, x * 2 from generate_series(0, 5) x;
+alter table testgen.t4 add constraint chk_gen_clause check (b = a * 2);
+select pg_relation_filenode('testgen.t4') as t4_filenode_before \gset
+alter table testgen.t4 alter column b add generated always as (a * 2) stored;
+select pg_relation_filenode('testgen.t4') as t4_filenode_after \gset
+select :t4_filenode_before = :t4_filenode_after as did_skip_rewrite;
+\d+ testgen.t4
+drop table testgen.t4;
+
+-- turning a regular column into a stored generated column
+-- same as the previous case, but a rewrite happens since the constraint is not
+-- valid
+create table testgen.t4 (a int, b int not null);
+insert into testgen.t4 (a, b) select x, x * 2 from generate_series(0, 5) x;
+alter table testgen.t4 add constraint chk_gen_clause check (b = a * 2) not valid;
+select pg_relation_filenode('testgen.t4') as t4_filenode_before \gset
+alter table testgen.t4 alter column b add generated always as (a * 2) stored;
+select pg_relation_filenode('testgen.t4') as t4_filenode_after \gset
+select :t4_filenode_before != :t4_filenode_after as did_rewrite;
+\d+ testgen.t4
+drop table testgen.t4;
+
+-- turning a regular column into a stored generated column
+-- same as the previous case, but a rewrite happens since the constraint
+-- operator is not mergejoinable
+create table testgen.t4 (a int, b int not null);
+insert into testgen.t4 (a, b) select x, x * 2 from generate_series(0, 5) x;
+alter table testgen.t4 add constraint chk_gen_clause check (b >= a * 2);
+select pg_relation_filenode('testgen.t4') as t4_filenode_before \gset
+alter table testgen.t4 alter column b add generated always as (a * 3) stored;
+select pg_relation_filenode('testgen.t4') as t4_filenode_after \gset
+select :t4_filenode_before != :t4_filenode_after as did_rewrite;
+\d+ testgen.t4
+drop table testgen.t4;
+
+-- test the whole process for adding a stored generated column without
+-- long-lived exclusive locks
+create table testgen.t5 (a int);
+select pg_relation_filenode('testgen.t5') as t5_filenode_before \gset
+insert into testgen.t5 select x from generate_series(1, 5) x;
+alter table testgen.t5 add column b int;
+-- take care of new and updated columns
+create function testgen.gen () returns trigger language plpgsql as $$
+begin
+  new.b = new.a * 2; return new;
+end
+$$;
+create trigger testgen_gen
+    before insert or update on testgen.t5
+    for each row execute function testgen.gen();
+-- add the constraint as not valid: enforced only for new and updated rows
+begin;
+alter table testgen.t5
+    add constraint chk_gen_clause check (b = a * 2) not valid;
+select locktype, mode from pg_locks
+  where relation = 'testgen.t5'::regclass and granted;
+commit;
+insert into testgen.t5 (a) values (100), (200), (300);
+-- backfill existing rows at the appropriate pace
+update testgen.t5 set b = a * 2 where b is null;
+-- validate: this scans the table, but without an exclusive lock
+begin;
+alter table testgen.t5 validate constraint chk_gen_clause;
+select locktype, mode from pg_locks
+  where relation = 'testgen.t5'::regclass and granted;
+commit;
+-- now the schema update, which skips the rewrite because of the check
+begin;
+drop trigger testgen_gen on testgen.t5;
+alter table testgen.t5 alter column b
+    add generated always as (a * 2) stored;
+select locktype, mode from pg_locks
+where relation = 'testgen.t5'::regclass and granted;
+commit;
+select pg_relation_filenode('testgen.t5') as t5_filenode_after \gset
+select :t5_filenode_before = :t5_filenode_after as did_skip_rewrite;
+\d+ testgen.t5
+
+-- test support for partitioned tables and inheritance
+create table testgen.tpart (a int, b int) partition by hash (a);
+create table testgen.tpart_p1 partition of testgen.tpart
+  for values with (modulus 2, remainder 0);
+create table testgen.tpart_p2 partition of testgen.tpart
+  for values with (modulus 2, remainder 1);
+insert into testgen.tpart (a, b) select x, x from generate_series(1, 5) x;
+
+-- altering the parent table, recursing
+begin;
+alter table testgen.tpart alter column b
+  add generated always as (a * 2) stored;
+-- expected: all the partitions have been rewritten
+select a, b, a * 2 as expected, b = (a * 2) as correct
+  from testgen.tpart_p1 order by a;
+select a, b, a * 2 as expected, b = (a * 2) as correct
+  from testgen.tpart_p2 order by a;
+rollback;
+
+-- altering a single partition is not allowed
+begin;
+-- expected: error
+alter table testgen.tpart_p1 alter column b
+    add generated always as (a * 2) stored;
+rollback;
+
+-- altering only the parent table is not allowed
+begin;
+-- expected: error
+alter table only testgen.tpart alter column b
+    add generated always as (a * 2) stored;
+rollback;
+
+drop table testgen.tpart;
+
+-- subpartitions
+create table testgen.tpart (a int, b int, c int)
+  partition by hash (a);
+create table testgen.tpart_p1 partition of testgen.tpart
+  for values with (modulus 2, remainder 0)
+  partition by hash (b);
+create table testgen.tpart_p1_1 partition of testgen.tpart_p1
+  for values with (modulus 2, remainder 0);
+create table testgen.tpart_p1_2 partition of testgen.tpart_p1
+  for values with (modulus 2, remainder 1);
+create table testgen.tpart_p2 partition of testgen.tpart
+  for values with (modulus 2, remainder 1)
+  partition by hash (b);
+create table testgen.tpart_p2_1 partition of testgen.tpart_p2
+  for values with (modulus 2, remainder 0);
+create table testgen.tpart_p2_2 partition of testgen.tpart_p2
+  for values with (modulus 2, remainder 1);
+insert into testgen.tpart (a, b)
+  select x, y
+    from generate_series(1, 5) x
+    cross join generate_series(1, 5) y;
+-- currently, it is not possible to change the generated state of an
+-- inheritance tree of depth >= 2 (same as in DROP EXPRESSION), so we expect an
+-- error here. This might be fixed later.
+begin;
+alter table testgen.tpart alter column c
+    add generated always as (a + b) stored;
+rollback;
+
+drop table testgen.tpart;
+
 -- tests for invalid invocations
 alter table doesnotexist alter column foo
   add generated always as (bar * 2) stored;
