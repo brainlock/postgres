@@ -3301,21 +3301,6 @@ insert into testgen.t5 (a) values (500);
 select * from testgen.t5 order by a nulls first;
 drop table testgen.t5;
 
--- check that the table isn't being scanned during phase 3, even if other
--- objects depend on the column we are changing. Lowering client_min_messages
--- makes the message 'verifying table...' be shown here when that happens.
-create table testgen.t6 (a int, b int not null);
-insert into testgen.t6 (a, b) values (1, 2);
-alter table testgen.t6 add constraint c1 check (b > 0);
-alter table testgen.t6 add constraint c2 check (b = a * 2);
-create index on testgen.t6 (b);
-set client_min_messages = 'DEBUG1';
-alter table testgen.t6 alter b
-    add generated always stored using constraint c2;
--- we expect to *not* see a "verifying table" message here
-reset client_min_messages;
-drop table testgen.t6;
-
 -- test support for partitioned tables and inheritance
 create table testgen.tpart (a int, b int) partition by hash (a);
 alter table testgen.tpart

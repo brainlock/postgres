@@ -101,6 +101,7 @@
 #include "utils/acl.h"
 #include "utils/builtins.h"
 #include "utils/fmgroids.h"
+#include "utils/injection_point.h"
 #include "utils/inval.h"
 #include "utils/lsyscache.h"
 #include "utils/memutils.h"
@@ -6433,13 +6434,23 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap)
 		}
 
 		if (newrel)
+		{
 			ereport(DEBUG1,
 					(errmsg_internal("rewriting table \"%s\"",
 									 RelationGetRelationName(oldrel))));
+#ifdef USE_INJECTION_POINTS
+			INJECTION_POINT("alter-table-phase-3-rewrite", NULL);
+#endif
+		}
 		else
+		{
 			ereport(DEBUG1,
 					(errmsg_internal("verifying table \"%s\"",
 									 RelationGetRelationName(oldrel))));
+#ifdef USE_INJECTION_POINTS
+			INJECTION_POINT("alter-table-phase-3-verify", NULL);
+#endif
+		}
 
 		if (newrel)
 		{
