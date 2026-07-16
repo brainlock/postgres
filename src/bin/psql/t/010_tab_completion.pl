@@ -468,14 +468,14 @@ check_completion("ALTER TABLE gencol_test ALTER COLUMN b A\t", qr/ADD /,
 check_completion("G\t", qr/GENERATED /,
 	"complete ALTER COLUMN <col> ADD GENERATED");
 
-check_completion("A\t", qr/ALWAYS /,
-	"complete ALTER COLUMN <col> ADD GENERATED ALWAYS");
+check_completion("U\t", qr/USING CONSTRAINT /,
+	"complete ALTER COLUMN <col> ADD GENERATED USING CONSTRAINT");
 
-check_completion("S\t", qr/STORED USING CONSTRAINT /,
-	"complete ALTER COLUMN <col> ADD GENERATED ALWAYS STORED USING CONSTRAINT");
+check_completion("\t\t", qr/check_gen /,
+	"complete ALTER COLUMN <col> ADD GENERATED USING CONSTRAINT offers check constraint names");
 
-check_completion("\t\t", qr/check_gen/,
-	"complete ALTER COLUMN <col> ADD GENERATED ALWAYS STORED USING CONSTRAINT offers check constraint names");
+check_completion("S\t", qr/STORED /,
+	"complete ALTER COLUMN <col> ADD GENERATED USING CONSTRAINT constr_name STORED");
 
 clear_query();
 
