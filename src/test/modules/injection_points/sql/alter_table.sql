@@ -16,7 +16,7 @@ ALTER TABLE testgen_inj.t1 ADD CONSTRAINT c1 CHECK (b > 0);
 ALTER TABLE testgen_inj.t1 ADD CONSTRAINT c2 CHECK (b = a * 2);
 CREATE INDEX ON testgen_inj.t1 (b);
 ALTER TABLE testgen_inj.t1 ALTER b
-    ADD GENERATED ALWAYS STORED USING CONSTRAINT c2;
+    ADD GENERATED USING CONSTRAINT c2 STORED;
 -- we expect to *not* see a "alter-table-phase-3-*" notice here
 DROP TABLE testgen_inj.t1;
 DROP SCHEMA testgen_inj;

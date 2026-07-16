@@ -9249,7 +9249,7 @@ reconstructRawExpr(Relation rel, Node *cookedExpr)
 }
 
 /*
- * ALTER COLUMN col ADD GENERATED ALWAYS STORED USING CONSTRAINT name
+ * ALTER COLUMN col ADD GENERATED USING CONSTRAINT name STORED
  *
  * Change a regular column into a stored generated column without a table
  * rewrite, using the expression contained in the given constraint.

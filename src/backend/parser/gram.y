@@ -2737,29 +2737,17 @@ alter_table_cmd:
 
 					$$ = (Node *) n;
 				}
-			/* ALTER TABLE <name> ALTER [COLUMN] <colname> ADD GENERATED ALWAYS STORED USING CONSTRAINT constraint_name */
-			| ALTER opt_column ColId ADD_P GENERATED generated_when STORED USING CONSTRAINT name
+			/* ALTER TABLE <name> ALTER [COLUMN] <colname> ADD GENERATED USING CONSTRAINT constraint_name STORED */
+			| ALTER opt_column ColId ADD_P GENERATED USING CONSTRAINT name STORED
 				{
 					AlterTableCmd *n = makeNode(AlterTableCmd);
 					Constraint *c = makeNode(Constraint);
 
-					c->conname = $10;
+					c->conname = $8;
 					c->contype = CONSTR_GENERATED;
-					c->generated_when = $6;
+					c->generated_when = ATTRIBUTE_IDENTITY_ALWAYS;
 					c->generated_kind = ATTRIBUTE_GENERATED_STORED;
-					c->location = @10;
-
-					/*
-					 * Like in the case of ColConstraintElem, we cannot handle
-					 * this in the grammar because IDENTITY allows both ALWAYS
-					 * and BY DEFAULT, while generated columns only allow
-					 * ALWAYS. This would lead to shift/reduce conflicts.
-					 */
-					if (c->generated_when != ATTRIBUTE_IDENTITY_ALWAYS)
-						ereport(ERROR,
-								(errcode(ERRCODE_SYNTAX_ERROR),
-								 errmsg("for a generated column, GENERATED ALWAYS must be specified"),
-								 parser_errposition(@6)));
+					c->location = @8;
 
 					n->subtype = AT_AddExpressionStored;
 					n->name = $3;

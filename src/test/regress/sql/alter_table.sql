@@ -3160,7 +3160,7 @@ drop publication pub1;
 drop schema alter1 cascade;
 drop schema alter2 cascade;
 
--- Tests for ALTER COLUMN ... ADD GENERATED ALWAYS STORED USING CONSTRAINT name
+-- Tests for ALTER COLUMN ... ADD GENERATED USING CONSTRAINT name STORED
 -- turning a regular column into a stored generated column without a rewrite
 create schema testgen;
 
@@ -3170,7 +3170,7 @@ insert into testgen.t1 (a, b)
 begin;
 alter table testgen.t1 add constraint chk_gen_clause check (b is not distinct from a * 2);
 alter table testgen.t1 alter column b
-  add generated always stored using constraint chk_gen_clause;
+  add generated using constraint chk_gen_clause stored;
 \d+ testgen.t1
 select a, b, a * 2 as expected, b = (a * 2) as correct
   from testgen.t1 order by a;
@@ -3179,7 +3179,7 @@ rollback;
 -- test that we accept IS NOT DISTINCT FROM with the operands swapped, too
 alter table testgen.t1 add constraint chk_gen_clause check (a * 2 is not distinct from b);
 alter table testgen.t1 alter column b
-    add generated always stored using constraint chk_gen_clause;
+    add generated using constraint chk_gen_clause stored;
 \d+ testgen.t1
 select a, b, a * 2 as expected, b = (a * 2) as correct
 from testgen.t1 order by a;
@@ -3195,7 +3195,7 @@ select x, x * 2 from generate_series(1, 10) x;
 begin;
 alter table testgen.t1 add constraint chk_gen_clause_equal check (b = a * 2);
 alter table testgen.t1 alter column b
-    add generated always stored using constraint chk_gen_clause_equal;
+    add generated using constraint chk_gen_clause_equal stored;
 \d+ testgen.t1
 select a, b, a * 2 as expected, b = (a * 2) as correct
 from testgen.t1 order by a;
@@ -3203,7 +3203,7 @@ rollback;
 -- test that we accept = with the operands swapped, too
 alter table testgen.t1 add constraint chk_gen_clause_equal check (a * 2 = b);
 alter table testgen.t1 alter column b
-    add generated always stored using constraint chk_gen_clause_equal;
+    add generated using constraint chk_gen_clause_equal stored;
 \d+ testgen.t1
 select a, b, a * 2 as expected, b = (a * 2) as correct
 from testgen.t1 order by a;
@@ -3223,7 +3223,7 @@ drop table testgen.t1;
 -- shapes which would be valid
 create table testgen.t1 (a int, b int not null);
 alter table testgen.t1 alter column b
-    add generated always stored using constraint chk_gen_clause_does_not_exist;
+    add generated using constraint chk_gen_clause_does_not_exist stored;
 drop table testgen.t1;
 
 -- turning a regular column into a stored generated column
@@ -3231,7 +3231,7 @@ drop table testgen.t1;
 create table testgen.t1 (a int, b int);
 alter table testgen.t1 add constraint chk_gen_clause check (b is not distinct from a * 2) not valid;
 alter table testgen.t1 alter column b
-  add generated always stored using constraint chk_gen_clause;
+  add generated using constraint chk_gen_clause stored;
 drop table testgen.t1;
 
 -- turning a regular column into a stored generated column
@@ -3239,7 +3239,7 @@ drop table testgen.t1;
 create table testgen.t1 (a int, b int);
 alter table testgen.t1 add constraint chk_gen_clause check (b is not distinct from a * 2) not enforced;
 alter table testgen.t1 alter column b
-    add generated always stored using constraint chk_gen_clause;
+    add generated using constraint chk_gen_clause stored;
 drop table testgen.t1;
 
 -- turning a regular column into a stored generated column
@@ -3249,7 +3249,7 @@ insert into testgen.t4 (a, b) select x, x * 2 from generate_series(0, 5) x;
 alter table testgen.t4 add constraint chk_gen_clause check (b = a * 2);
 select pg_relation_filenode('testgen.t4') as t4_filenode_before \gset
 alter table testgen.t4 alter column b
-  add generated always stored using constraint chk_gen_clause;
+  add generated using constraint chk_gen_clause stored;
 select pg_relation_filenode('testgen.t4') as t4_filenode_after \gset
 select :t4_filenode_before = :t4_filenode_after as did_skip_rewrite;
 \d+ testgen.t4
@@ -3261,7 +3261,7 @@ create table testgen.t4 (a int, b int not null);
 insert into testgen.t4 (a, b) select x, x * 2 from generate_series(0, 5) x;
 alter table testgen.t4 add constraint chk_gen_clause check (b >= a * 2);
 select pg_relation_filenode('testgen.t4') as t4_filenode_before \gset
-alter table testgen.t4 alter column b add generated always stored using constraint chk_gen_clause;
+alter table testgen.t4 alter column b add generated using constraint chk_gen_clause stored;
 select pg_relation_filenode('testgen.t4') as t4_filenode_after \gset
 select :t4_filenode_before != :t4_filenode_after as did_rewrite;
 \d+ testgen.t4
@@ -3304,7 +3304,7 @@ commit;
 -- the constraint
 begin;
 alter table testgen.t5 alter column b
-    add generated always stored using constraint chk_gen_clause;
+    add generated using constraint chk_gen_clause stored;
 select locktype, mode from pg_locks
 where relation = 'testgen.t5'::regclass and granted;
 commit;
@@ -3334,7 +3334,7 @@ insert into testgen.tpart (a, b) select x, x * 2 from generate_series(1, 5) x;
 -- altering the parent table, recursing
 begin;
 alter table testgen.tpart alter column b
-    add generated always stored using constraint chk_gen_clause;
+    add generated using constraint chk_gen_clause stored;
 -- expected: all the partitions have been rewritten
 select a, b, a * 2 as expected, b = (a * 2) as correct
 from testgen.tpart_p1 order by a;
@@ -3346,14 +3346,14 @@ rollback;
 begin;
 -- expected: error
 alter table testgen.tpart_p1 alter column b
-    add generated always stored using constraint chk_gen_clause;
+    add generated using constraint chk_gen_clause stored;
 rollback;
 
 -- altering only the parent table is not allowed
 begin;
 -- expected: error
 alter table only testgen.tpart alter column b
-    add generated always stored using constraint chk_gen_clause;
+    add generated using constraint chk_gen_clause stored;
 rollback;
 
 drop table testgen.tpart;
@@ -3368,93 +3368,87 @@ alter table testgen.tpart
 -- it's only allowed to change the whole hierarchy at once...
 begin;
 alter table testgen.root alter column c
-    add generated always stored using constraint chk_gen_clause;
+    add generated using constraint chk_gen_clause stored;
 rollback;
 
 -- ... hence all these should result in an error
 begin;
 alter table only testgen.root alter column c
-    add generated always stored using constraint chk_gen_clause;
+    add generated using constraint chk_gen_clause stored;
 rollback;
 begin;
 alter table testgen.intermediate alter column c
-    add generated always stored using constraint chk_gen_clause;
+    add generated using constraint chk_gen_clause stored;
 rollback;
 begin;
 alter table only testgen.intermediate alter column c
-    add generated always stored using constraint chk_gen_clause;
+    add generated using constraint chk_gen_clause stored;
 rollback;
 begin;
 alter table testgen.leaf alter column c
-    add generated always stored using constraint chk_gen_clause;
+    add generated using constraint chk_gen_clause stored;
 rollback;
 begin;
 alter table only testgen.leaf alter column c
-    add generated always stored using constraint chk_gen_clause;
+    add generated using constraint chk_gen_clause stored;
 rollback;
 
 drop table testgen.root cascade;
 
 -- tests for invalid invocations
 alter table doesnotexist alter column foo
-  add generated always stored using constraint cdoesnotexist;
+  add generated using constraint cdoesnotexist stored;
 
 create table testgen.t1 (a int);
 alter table testgen.t1 add constraint chk_gen_clause check (1);
 
 alter table testgen.t1 alter column doesnotexist
-  add generated always stored using constraint chk_gen_clause;
+  add generated using constraint chk_gen_clause stored;
 
 alter table testgen.t1 add column b int;
 
--- invalid: only supports ALWAYS
-alter table testgen.t1 alter column b
-    add generated by default stored using constraint chk_gen_clause;
-
--- invalid: only supports STORED. These are all syntax errors.
-alter table testgen.t1 alter column b add generated always;
-alter table testgen.t1 alter column b add generated always virtual;
-alter table testgen.t1 alter column b add generated always using constraint chk_gen_clause;
-alter table testgen.t1 alter column b add generated always virtual using constraint chk_gen_clause;
+-- invalid: only supports STORED. The following are syntax errors.
+alter table testgen.t1 alter column b add generated using constraint chk_gen_clause;
+alter table testgen.t1 alter column b add generated using constraint chk_gen_clause virtual;
 drop table testgen.t1;
 
 -- invalid: b is already a generated column
 create table testgen.t2 (a int, b int generated always as (a * 2) stored);
-alter table testgen.t2 alter column b add generated always stored using constraint doesnotexist;
+alter table testgen.t2 alter column b add generated using constraint doesnotexist stored;
 drop table testgen.t2;
 
 -- invalid: b is an identity column
 create table testgen.t2 (a int, b int generated always as identity);
-alter table testgen.t2 alter column b add generated always stored using constraint doesnotexist;
+alter table testgen.t2 alter column b add generated using constraint doesnotexist stored;
 drop table testgen.t2;
 create table testgen.t2 (a int, b int generated by default as identity );
-alter table testgen.t2 alter column b add generated always stored using constraint doesnotexist;
+alter table testgen.t2 alter column b add generated using constraint doesnotexist stored;
 drop table testgen.t2;
 
 -- invalid: b is a serial column
 create table testgen.t2 (a int, b bigserial);
 alter table testgen.t2 add constraint chk_gen_clause check (b is not distinct from (1));
-alter table testgen.t2 alter column b add generated always stored using constraint chk_gen_clause;
+alter table testgen.t2 alter column b add generated using constraint chk_gen_clause stored;
 drop table testgen.t2;
 
 -- invalid: c is referenced by another column's default expr
 create table testgen.t3 (a int, b int generated always as (c + 1), c int);
 alter table testgen.t3 add constraint chk_gen_clause check (c is not distinct from (1));
-alter table testgen.t3 alter column c add generated always stored using constraint chk_gen_clause;
+alter table testgen.t3 alter column c add generated using constraint chk_gen_clause stored;
 drop table testgen.t3;
 
 -- invalid: c references another generated column
 create table testgen.t3 (a int, b int generated always as (a + 1), c int);
 alter table testgen.t3 add constraint chk_gen_clause check (c is not distinct from (b + 1));
-alter table testgen.t3 alter column c add generated always stored using constraint chk_gen_clause;
+alter table testgen.t3 alter column c add generated using constraint chk_gen_clause stored;
 drop table testgen.t3;
 
 -- invalid: c is referenced in a partition key
 create table testgen.t3 (a int, b int, c int) partition by hash (c);
-alter table testgen.t3 alter column c add generated always stored using constraint doesnotexist;
+alter table testgen.t3 alter column c add generated using constraint doesnotexist stored;
 drop table testgen.t3;
 create table testgen.t3 (a int, b int, c int) partition by hash ((c));
-alter table testgen.t3 alter column c add generated always stored using constraint doesnotexist;
+alter table testgen.t3 alter column c add generated using constraint doesnotexist stored;
 drop table testgen.t3;
 -- test for a whole-row reference
 -- since it's not possible to reference schema.table in partition by range,
@@ -3462,10 +3456,10 @@ drop table testgen.t3;
 show search_path \gset
 set search_path to testgen, public;
 create table t3 (a int, b int, c int) partition by range ((t3));
-alter table testgen.t3 alter column c add generated always stored using constraint doesnotexist;
+alter table testgen.t3 alter column c add generated using constraint doesnotexist stored;
 drop table testgen.t3;
 create table t3 (a int, b int, c int) partition by range ((t3 is null));
-alter table testgen.t3 alter column c add generated always stored using constraint doesnotexist;
+alter table testgen.t3 alter column c add generated using constraint doesnotexist stored;
 drop table testgen.t3;
 set search_path to :search_path;
 
@@ -3473,7 +3467,7 @@ create table testgen.t3 (a int, b int);
 -- invalid: expr must be immutable
 alter table testgen.t3 add constraint chk_gen_clause check (b is not distinct from (a + random()::int));
 alter table testgen.t3 alter column b
-    add generated always stored using constraint chk_gen_clause;
+    add generated using constraint chk_gen_clause stored;
 alter table testgen.t3 drop constraint chk_gen_clause;
 drop table testgen.t3;
 
