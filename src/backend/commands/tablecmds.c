@@ -9130,17 +9130,31 @@ findUsableConstraintForAddExprStored(Relation rel, AttrNumber attnum,
 				&& IsA(linitial(negation->args), DistinctExpr))
 			{
 				DistinctExpr *dist = linitial(negation->args);
+				Node	   *left,
+						   *right;
 
 				Assert(list_length(dist->args) == 2);
 
+				/* Support both orders of the operands */
 				if (IsA(linitial(dist->args), Var))
 				{
-					Var		   *var = linitial(dist->args);
+					left = linitial(dist->args);
+					right = lsecond(dist->args);
+				}
+				else
+				{
+					right = linitial(dist->args);
+					left = lsecond(dist->args);
+				}
+
+				if (IsA(left, Var))
+				{
+					Var		   *var = (Var *) left;
 
 					if (var->varattno == attnum &&
 						op_mergejoinable(dist->opno, exprType((Node *) var)))
 					{
-						foundExpr = lsecond(dist->args);
+						foundExpr = right;
 						break;
 					}
 				}
@@ -9151,15 +9165,33 @@ findUsableConstraintForAddExprStored(Relation rel, AttrNumber attnum,
 		{
 			OpExpr	   *op = (OpExpr *) conexpr;
 
-			if (list_length(op->args) == 2 && IsA(linitial(op->args), Var))
+			if (list_length(op->args) == 2)
 			{
-				Var		   *var = linitial(op->args);
+				Node	   *left,
+						   *right;
 
-				if (var->varattno == attnum &&
-					op_mergejoinable(op->opno, exprType((Node *) var)))
+				/* Support both orders of the operands */
+				if (IsA(linitial(op->args), Var))
 				{
-					foundExpr = lsecond(op->args);
-					break;
+					left = linitial(op->args);
+					right = lsecond(op->args);
+				}
+				else
+				{
+					right = linitial(op->args);
+					left = lsecond(op->args);
+				}
+
+				if (IsA(left, Var))
+				{
+					Var		   *var = (Var *) left;
+
+					if (var->varattno == attnum &&
+						op_mergejoinable(op->opno, exprType((Node *) var)))
+					{
+						foundExpr = right;
+						break;
+					}
 				}
 			}
 		}

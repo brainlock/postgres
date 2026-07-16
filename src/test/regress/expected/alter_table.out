@@ -4882,6 +4882,7 @@ create schema testgen;
 create table testgen.t1 (a int, b int);
 insert into testgen.t1 (a, b)
   select x, x * 2 from generate_series(1, 10) x;
+begin;
 alter table testgen.t1 add constraint chk_gen_clause check (b is not distinct from a * 2);
 alter table testgen.t1 alter column b
   add generated always stored using constraint chk_gen_clause;
@@ -4913,15 +4914,48 @@ select a, b, a * 2 as expected, b = (a * 2) as correct
 insert into testgen.t1 (a, b) values (10, 20);
 ERROR:  cannot insert a non-DEFAULT value into column "b"
 DETAIL:  Column "b" is a generated column.
-insert into testgen.t1 (a, b) values (10, 21);
+rollback;
+-- test that we accept IS NOT DISTINCT FROM with the operands swapped, too
+alter table testgen.t1 add constraint chk_gen_clause check (a * 2 is not distinct from b);
+alter table testgen.t1 alter column b
+    add generated always stored using constraint chk_gen_clause;
+\d+ testgen.t1
+                                                 Table "testgen.t1"
+ Column |  Type   | Collation | Nullable |              Default               | Storage | Stats target | Description 
+--------+---------+-----------+----------+------------------------------------+---------+--------------+-------------
+ a      | integer |           |          |                                    | plain   |              | 
+ b      | integer |           |          | generated always as (a * 2) stored | plain   |              | 
+Check constraints:
+    "chk_gen_clause" CHECK (NOT (a * 2) IS DISTINCT FROM b)
+
+select a, b, a * 2 as expected, b = (a * 2) as correct
+from testgen.t1 order by a;
+ a  | b  | expected | correct 
+----+----+----------+---------
+  1 |  2 |        2 | t
+  2 |  4 |        4 | t
+  3 |  6 |        6 | t
+  4 |  8 |        8 | t
+  5 | 10 |       10 | t
+  6 | 12 |       12 | t
+  7 | 14 |       14 | t
+  8 | 16 |       16 | t
+  9 | 18 |       18 | t
+ 10 | 20 |       20 | t
+(10 rows)
+
+insert into testgen.t1 (a, b) values (10, 20);
 ERROR:  cannot insert a non-DEFAULT value into column "b"
 DETAIL:  Column "b" is a generated column.
+rollback;
+WARNING:  there is no transaction in progress
 drop table testgen.t1;
 -- accepts = instead of IS NOT DISTINCT FROM when the destination
 -- column is NOT NULL
 create table testgen.t1 (a int, b int not null);
 insert into testgen.t1 (a, b)
 select x, x * 2 from generate_series(1, 10) x;
+begin;
 alter table testgen.t1 add constraint chk_gen_clause_equal check (b = a * 2);
 alter table testgen.t1 alter column b
     add generated always stored using constraint chk_gen_clause_equal;
@@ -4952,6 +4986,40 @@ from testgen.t1 order by a;
  10 | 20 |       20 | t
 (10 rows)
 
+rollback;
+-- test that we accept = with the operands swapped, too
+alter table testgen.t1 add constraint chk_gen_clause_equal check (a * 2 = b);
+alter table testgen.t1 alter column b
+    add generated always stored using constraint chk_gen_clause_equal;
+\d+ testgen.t1
+                                                 Table "testgen.t1"
+ Column |  Type   | Collation | Nullable |              Default               | Storage | Stats target | Description 
+--------+---------+-----------+----------+------------------------------------+---------+--------------+-------------
+ a      | integer |           |          |                                    | plain   |              | 
+ b      | integer |           | not null | generated always as (a * 2) stored | plain   |              | 
+Check constraints:
+    "chk_gen_clause_equal" CHECK ((a * 2) = b)
+Not-null constraints:
+    "t1_b_not_null" NOT NULL "b"
+
+select a, b, a * 2 as expected, b = (a * 2) as correct
+from testgen.t1 order by a;
+ a  | b  | expected | correct 
+----+----+----------+---------
+  1 |  2 |        2 | t
+  2 |  4 |        4 | t
+  3 |  6 |        6 | t
+  4 |  8 |        8 | t
+  5 | 10 |       10 | t
+  6 | 12 |       12 | t
+  7 | 14 |       14 | t
+  8 | 16 |       16 | t
+  9 | 18 |       18 | t
+ 10 | 20 |       20 | t
+(10 rows)
+
+rollback;
+WARNING:  there is no transaction in progress
 drop table testgen.t1;
 -- turning a regular column into a stored generated column
 -- fails when the constraint does not exist

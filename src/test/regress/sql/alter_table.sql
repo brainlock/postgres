@@ -3167,6 +3167,7 @@ create schema testgen;
 create table testgen.t1 (a int, b int);
 insert into testgen.t1 (a, b)
   select x, x * 2 from generate_series(1, 10) x;
+begin;
 alter table testgen.t1 add constraint chk_gen_clause check (b is not distinct from a * 2);
 alter table testgen.t1 alter column b
   add generated always stored using constraint chk_gen_clause;
@@ -3174,7 +3175,16 @@ alter table testgen.t1 alter column b
 select a, b, a * 2 as expected, b = (a * 2) as correct
   from testgen.t1 order by a;
 insert into testgen.t1 (a, b) values (10, 20);
-insert into testgen.t1 (a, b) values (10, 21);
+rollback;
+-- test that we accept IS NOT DISTINCT FROM with the operands swapped, too
+alter table testgen.t1 add constraint chk_gen_clause check (a * 2 is not distinct from b);
+alter table testgen.t1 alter column b
+    add generated always stored using constraint chk_gen_clause;
+\d+ testgen.t1
+select a, b, a * 2 as expected, b = (a * 2) as correct
+from testgen.t1 order by a;
+insert into testgen.t1 (a, b) values (10, 20);
+rollback;
 drop table testgen.t1;
 
 -- accepts = instead of IS NOT DISTINCT FROM when the destination
@@ -3182,12 +3192,22 @@ drop table testgen.t1;
 create table testgen.t1 (a int, b int not null);
 insert into testgen.t1 (a, b)
 select x, x * 2 from generate_series(1, 10) x;
+begin;
 alter table testgen.t1 add constraint chk_gen_clause_equal check (b = a * 2);
 alter table testgen.t1 alter column b
     add generated always stored using constraint chk_gen_clause_equal;
 \d+ testgen.t1
 select a, b, a * 2 as expected, b = (a * 2) as correct
 from testgen.t1 order by a;
+rollback;
+-- test that we accept = with the operands swapped, too
+alter table testgen.t1 add constraint chk_gen_clause_equal check (a * 2 = b);
+alter table testgen.t1 alter column b
+    add generated always stored using constraint chk_gen_clause_equal;
+\d+ testgen.t1
+select a, b, a * 2 as expected, b = (a * 2) as correct
+from testgen.t1 order by a;
+rollback;
 drop table testgen.t1;
 
 -- turning a regular column into a stored generated column
