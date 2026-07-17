@@ -2749,7 +2749,7 @@ alter_table_cmd:
 					c->generated_kind = ATTRIBUTE_GENERATED_STORED;
 					c->location = @8;
 
-					n->subtype = AT_AddExpressionStored;
+					n->subtype = AT_AddGeneratedStored;
 					n->name = $3;
 					n->def = (Node *) c;
 

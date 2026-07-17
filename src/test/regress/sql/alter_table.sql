@@ -3214,7 +3214,7 @@ drop table testgen.t1;
 -- fails when the constraint does not exist
 create table testgen.t1 (a int, b int);
 alter table testgen.t1 alter column b
-  add generated always stored using constraint chk_gen_clause_does_not_exist;
+  add generated using constraint chk_gen_clause_does_not_exist stored;
 drop table testgen.t1;
 
 -- turning a regular column into a stored generated column

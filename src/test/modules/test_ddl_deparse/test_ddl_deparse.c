@@ -129,7 +129,7 @@ get_altertable_subcmdinfo(PG_FUNCTION_ARGS)
 			case AT_SetNotNull:
 				strtype = "SET NOT NULL";
 				break;
-			case AT_AddExpressionStored:
+			case AT_AddGeneratedStored:
 				strtype = "ADD GENERATED STORED";
 				break;
 			case AT_SetExpression:

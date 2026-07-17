@@ -52,7 +52,7 @@ ALTER TABLE [ IF EXISTS ] <replaceable class="parameter">name</replaceable>
     ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> SET DEFAULT <replaceable class="parameter">expression</replaceable>
     ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> DROP DEFAULT
     ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> { SET | DROP } NOT NULL
-    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> ADD GENERATED ALWAYS STORED USING CONSTRAINT <replaceable class="parameter">constraint_name</replaceable>
+    ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> ADD GENERATED USING CONSTRAINT <replaceable class="parameter">constraint_name</replaceable> STORED
     ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> SET EXPRESSION AS ( <replaceable class="parameter">expression</replaceable> )
     ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> DROP EXPRESSION [ IF EXISTS ]
     ALTER [ COLUMN ] <replaceable class="parameter">column_name</replaceable> ADD GENERATED { ALWAYS | BY DEFAULT } AS IDENTITY [ ( <replaceable>sequence_options</replaceable> ) ]
@@ -274,7 +274,7 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
    </varlistentry>
 
    <varlistentry id="sql-altertable-desc-add-generated-always-stored-using-constraint">
-    <term><literal>ADD GENERATED ALWAYS STORED USING CONSTRAINT</literal></term>
+    <term><literal>ADD GENERATED USING CONSTRAINT</literal></term>
     <listitem>
      <para>
       This form changes a regular column into a stored generated column, using

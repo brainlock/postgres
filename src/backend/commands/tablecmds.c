@@ -792,21 +792,21 @@ static void ATExecMergePartitions(List **wqueue, AlteredTableInfo *tab, Relation
 static void ATExecSplitPartition(List **wqueue, AlteredTableInfo *tab,
 								 Relation rel, PartitionCmd *cmd,
 								 AlterTableUtilityContext *context);
-static void ATPrepAddExpressionStored(Relation rel,
-									  AlterTableCmd *cmd,
-									  bool recurse, bool recursing,
-									  LOCKMODE lockmode);
-static void checkDependenciesForAddExprStored(Relation rel,
-											  AttrNumber attnum,
-											  const char *colName);
-static Node *findUsableConstraintForAddExprStored(Relation rel, AttrNumber attnum,
-												  bool attisnotnull,
-												  const char *conname);
+static void ATPrepAddGenStored(Relation rel,
+							   AlterTableCmd *cmd,
+							   bool recurse, bool recursing,
+							   LOCKMODE lockmode);
+static void checkDependenciesForAddGenStored(Relation rel,
+											 AttrNumber attnum,
+											 const char *colName);
+static Node *findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
+												 bool attisnotnull,
+												 const char *conname);
 static Node *reconstructRawExpr(Relation rel, Node *cookedExpr);
-static ObjectAddress ATExecAddExpressionStored(AlteredTableInfo *tab,
-											   Relation rel,
-											   const char *colName,
-											   Constraint *def);
+static ObjectAddress ATExecAddGeneratedStored(AlteredTableInfo *tab,
+											  Relation rel,
+											  const char *colName,
+											  Constraint *def);
 static List *collectPartitionIndexExtDeps(List *partitionOids);
 static void applyPartitionIndexExtDeps(Oid newPartOid, List *extDepState);
 static void freePartitionIndexExtDeps(List *extDepState);
@@ -4820,7 +4820,7 @@ AlterTableGetLockLevel(List *cmds)
 			case AT_AddIdentity:
 			case AT_DropIdentity:
 			case AT_SetIdentity:
-			case AT_AddExpressionStored:
+			case AT_AddGeneratedStored:
 			case AT_SetExpression:
 			case AT_DropExpression:
 			case AT_SetCompression:
@@ -5145,12 +5145,12 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode, context);
 			pass = AT_PASS_SET_EXPRESSION;
 			break;
-		case AT_AddExpressionStored:	/* ALTER COLUMN ADD GENERATED ALWAYS
-										 * STORED USING CONSTRAINT */
+		case AT_AddGeneratedStored: /* ALTER COLUMN ADD GENERATED USING
+									 * CONSTRAINT */
 			ATSimplePermissions(cmd->subtype, rel,
 								ATT_TABLE | ATT_PARTITIONED_TABLE | ATT_FOREIGN_TABLE);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode, context);
-			ATPrepAddExpressionStored(rel, cmd, recurse, recursing, lockmode);
+			ATPrepAddGenStored(rel, cmd, recurse, recursing, lockmode);
 			pass = AT_PASS_ADD_OTHERCONSTR;
 			break;
 		case AT_DropExpression: /* ALTER COLUMN DROP EXPRESSION */
@@ -5547,11 +5547,11 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 		case AT_SetExpression:
 			address = ATExecSetExpression(tab, rel, cmd->name, cmd->def, lockmode);
 			break;
-		case AT_AddExpressionStored:
+		case AT_AddGeneratedStored:
 			Assert(IsA(cmd->def, Constraint));
-			address = ATExecAddExpressionStored(tab, rel,
-												cmd->name,
-												(Constraint *) cmd->def);
+			address = ATExecAddGeneratedStored(tab, rel,
+											   cmd->name,
+											   (Constraint *) cmd->def);
 			break;
 		case AT_DropExpression:
 			address = ATExecDropExpression(rel, cmd->name, cmd->missing_ok, lockmode);
@@ -6771,7 +6771,7 @@ alter_table_type_to_string(AlterTableType cmdtype)
 			return "ALTER COLUMN ... SET NOT NULL";
 		case AT_SetExpression:
 			return "ALTER COLUMN ... SET EXPRESSION";
-		case AT_AddExpressionStored:
+		case AT_AddGeneratedStored:
 			return "ALTER COLUMN ... ADD GENERATED STORED";
 		case AT_DropExpression:
 			return "ALTER COLUMN ... DROP EXPRESSION";
@@ -8926,16 +8926,16 @@ ATExecSetExpression(AlteredTableInfo *tab, Relation rel, const char *colName,
 /*
  * Preparation phase for
  *
- * ALTER COLUMN col ADD GENERATED ALWAYS STORED USING CONSTRAINT name
+ * ALTER COLUMN col ADD GENERATED USING CONSTRAINT name STORED
  *
  * In an inheritance hierarchy, it is only valid to alter the type of the
  * whole hierarchy at once.
  */
 static void
-ATPrepAddExpressionStored(Relation rel,
-						  AlterTableCmd *cmd,
-						  bool recurse, bool recursing,
-						  LOCKMODE lockmode)
+ATPrepAddGenStored(Relation rel,
+				   AlterTableCmd *cmd,
+				   bool recurse, bool recursing,
+				   LOCKMODE lockmode)
 {
 	/*
 	 * Reject ONLY if there are child tables.
@@ -8944,7 +8944,7 @@ ATPrepAddExpressionStored(Relation rel,
 		find_inheritance_children(RelationGetRelid(rel), lockmode))
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("ALTER COLUMN / ADD GENERATED ALWAYS STORED must be applied to child tables too")));
+				 errmsg("ALTER COLUMN / ADD GENERATED USING CONSTRAINT ... STORED must be applied to child tables too")));
 
 	/*
 	 * Cannot change only inherited columns to be stored generated columns.
@@ -8975,9 +8975,9 @@ ATPrepAddExpressionStored(Relation rel,
  * into a stored generated column.
  */
 static void
-checkDependenciesForAddExprStored(Relation rel,
-								  AttrNumber attnum,
-								  const char *colName)
+checkDependenciesForAddGenStored(Relation rel,
+								 AttrNumber attnum,
+								 const char *colName)
 {
 	Relation	pg_depend;
 	ScanKeyData keys[3];
@@ -9062,7 +9062,7 @@ checkDependenciesForAddExprStored(Relation rel,
 }
 
 /*
- * Subroutine for ATExecAddExpressionStored, used to find a CHECK constraint
+ * Subroutine for ATExecAddGeneratedStored, used to find a CHECK constraint
  * to prove that the column values statisfy what will be the generator
  * expression.
  *
@@ -9080,9 +9080,9 @@ checkDependenciesForAddExprStored(Relation rel,
  * and the unpacked expression.
  */
 static Node *
-findUsableConstraintForAddExprStored(Relation rel, AttrNumber attnum,
-									 bool attisnotnull,
-									 const char *conname)
+findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
+									bool attisnotnull,
+									const char *conname)
 {
 	Relation	pg_constraint;
 	HeapTuple	conTup;
@@ -9256,13 +9256,13 @@ reconstructRawExpr(Relation rel, Node *cookedExpr)
  *
  * The constraint must be a CHECK constraint proving that the expression is
  * already satisfied by all the values in the column (see
- * findUsableConstraintForAddExprStored).
+ * findUsableConstraintForAddGenStored).
  */
 static ObjectAddress
-ATExecAddExpressionStored(AlteredTableInfo *tab,
-						  Relation rel,
-						  const char *colName,
-						  Constraint *def)
+ATExecAddGeneratedStored(AlteredTableInfo *tab,
+						 Relation rel,
+						 const char *colName,
+						 Constraint *def)
 {
 	HeapTuple	tuple;
 	Form_pg_attribute attTup;
@@ -9324,15 +9324,15 @@ ATExecAddExpressionStored(AlteredTableInfo *tab,
 				 errdetail("column \"%s\" is part of the partition key of relation \"%s\"",
 						   colName, RelationGetRelationName(rel))));
 
-	checkDependenciesForAddExprStored(rel, attnum, colName);
+	checkDependenciesForAddGenStored(rel, attnum, colName);
 
 	/*
 	 * Now, try to find the constraint by name, and see if it has the
 	 * necessary structure to prove that the values are consistent.
 	 */
-	foundConstraintExpr = findUsableConstraintForAddExprStored(rel, attnum,
-															   attTup->attnotnull,
-															   def->conname);
+	foundConstraintExpr = findUsableConstraintForAddGenStored(rel, attnum,
+															  attTup->attnotnull,
+															  def->conname);
 	if (foundConstraintExpr == NULL)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),

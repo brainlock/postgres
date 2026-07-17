@@ -5025,10 +5025,9 @@ drop table testgen.t1;
 -- fails when the constraint does not exist
 create table testgen.t1 (a int, b int);
 alter table testgen.t1 alter column b
-  add generated always stored using constraint chk_gen_clause_does_not_exist;
-ERROR:  syntax error at or near "stored"
-LINE 2:   add generated always stored using constraint chk_gen_claus...
-                               ^
+  add generated using constraint chk_gen_clause_does_not_exist stored;
+ERROR:  cannot convert a column into a stored generated column without a constraint to prove that the values are consistent
+DETAIL:  could not find a valid constraint "chk_gen_clause_does_not_exist" CHECK ("b" IS NOT DISTINCT FROM (expr))
 drop table testgen.t1;
 -- turning a regular column into a stored generated column
 -- fails when the constraint does not exist. When the destination
@@ -5266,7 +5265,7 @@ begin;
 -- expected: error
 alter table only testgen.tpart alter column b
     add generated using constraint chk_gen_clause stored;
-ERROR:  ALTER COLUMN / ADD GENERATED ALWAYS STORED must be applied to child tables too
+ERROR:  ALTER COLUMN / ADD GENERATED USING CONSTRAINT ... STORED must be applied to child tables too
 rollback;
 drop table testgen.tpart;
 -- test support for inheritance and subpartitions
@@ -5287,7 +5286,7 @@ rollback;
 begin;
 alter table only testgen.root alter column c
     add generated using constraint chk_gen_clause stored;
-ERROR:  ALTER COLUMN / ADD GENERATED ALWAYS STORED must be applied to child tables too
+ERROR:  ALTER COLUMN / ADD GENERATED USING CONSTRAINT ... STORED must be applied to child tables too
 rollback;
 begin;
 alter table testgen.intermediate alter column c
@@ -5297,7 +5296,7 @@ rollback;
 begin;
 alter table only testgen.intermediate alter column c
     add generated using constraint chk_gen_clause stored;
-ERROR:  ALTER COLUMN / ADD GENERATED ALWAYS STORED must be applied to child tables too
+ERROR:  ALTER COLUMN / ADD GENERATED USING CONSTRAINT ... STORED must be applied to child tables too
 rollback;
 begin;
 alter table testgen.leaf alter column c
