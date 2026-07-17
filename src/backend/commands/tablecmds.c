@@ -799,6 +799,7 @@ static void ATPrepAddGenStored(Relation rel,
 static void checkDependenciesForAddGenStored(Relation rel,
 											 AttrNumber attnum,
 											 const char *colName);
+static Node *matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno);
 static Node *findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 												 bool attisnotnull,
 												 const char *conname);
@@ -9062,6 +9063,45 @@ checkDependenciesForAddGenStored(Relation rel,
 }
 
 /*
+ * Given a list of two nodes (operands of a binary function), an operator and a
+ * column, this matches when the operator is an equality and one of the two
+ * operands is a Var referencing the given column.
+ *
+ * It returns the expression tree of the other operand.
+ */
+static Node *
+matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno)
+{
+	Node	   *left,
+			   *right;
+
+	Assert(list_length(args) == 2);
+
+	/* Support both orders of the operands */
+	if (IsA(linitial(args), Var))
+	{
+		left = linitial(args);
+		right = lsecond(args);
+	}
+	else
+	{
+		right = linitial(args);
+		left = lsecond(args);
+	}
+
+	if (IsA(left, Var))
+	{
+		Var		   *var = (Var *) left;
+
+		if (var->varattno == attnum &&
+			op_mergejoinable(opno, exprType((Node *) var)))
+			return right;
+	}
+
+	return NULL;
+}
+
+/*
  * Subroutine for ATExecAddGeneratedStored, used to find a CHECK constraint
  * to prove that the column values statisfy what will be the generator
  * expression.
@@ -9129,34 +9169,12 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 				&& IsA(linitial(negation->args), DistinctExpr))
 			{
 				DistinctExpr *dist = linitial(negation->args);
-				Node	   *left,
-						   *right;
 
 				Assert(list_length(dist->args) == 2);
 
-				/* Support both orders of the operands */
-				if (IsA(linitial(dist->args), Var))
-				{
-					left = linitial(dist->args);
-					right = lsecond(dist->args);
-				}
-				else
-				{
-					right = linitial(dist->args);
-					left = lsecond(dist->args);
-				}
-
-				if (IsA(left, Var))
-				{
-					Var		   *var = (Var *) left;
-
-					if (var->varattno == attnum &&
-						op_mergejoinable(dist->opno, exprType((Node *) var)))
-					{
-						foundExpr = right;
-						break;
-					}
-				}
+				foundExpr = matchBinaryOpOnVar(dist->args, attnum, dist->opno);
+				if (foundExpr)
+					break;
 			}
 		}
 		/* If the column is NOT NULL, try to match = as well */
@@ -9166,32 +9184,9 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 
 			if (list_length(op->args) == 2)
 			{
-				Node	   *left,
-						   *right;
-
-				/* Support both orders of the operands */
-				if (IsA(linitial(op->args), Var))
-				{
-					left = linitial(op->args);
-					right = lsecond(op->args);
-				}
-				else
-				{
-					right = linitial(op->args);
-					left = lsecond(op->args);
-				}
-
-				if (IsA(left, Var))
-				{
-					Var		   *var = (Var *) left;
-
-					if (var->varattno == attnum &&
-						op_mergejoinable(op->opno, exprType((Node *) var)))
-					{
-						foundExpr = right;
-						break;
-					}
-				}
+				foundExpr = matchBinaryOpOnVar(op->args, attnum, op->opno);
+				if (foundExpr)
+					break;
 			}
 		}
 	}
