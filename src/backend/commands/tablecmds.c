@@ -9076,8 +9076,7 @@ checkDependenciesForAddGenStored(Relation rel,
  *   CHECK (column IS NOT DISTINCT FROM expr)
  *   CHECK (column = expr)
  *
- * If a valid constraint is found, this returns both the Oid of the constraint
- * and the unpacked expression.
+ * If a valid constraint is found, this returns the expr node.
  */
 static Node *
 findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
