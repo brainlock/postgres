@@ -335,6 +335,18 @@ struct DropRelationCallbackState
 	char		actual_relpersistence;
 };
 
+/*
+ * Used by findUsableConstraintForAddGenStored to give a hint about why no
+ * constraint matched.
+ */
+typedef enum AddGenConstrError
+{
+	ADD_GEN_CONSTR_NOT_FOUND = 0,
+	ADD_GEN_CONSTR_NOT_VALID,
+	ADD_GEN_CONSTR_SHAPE_MISMATCH,
+	ADD_GEN_CONSTR_TYPE_CAST,
+} AddGenConstrError;
+
 /* Alter table target-type flags for ATSimplePermissions */
 #define		ATT_TABLE				0x0001
 #define		ATT_VIEW				0x0002
@@ -799,10 +811,13 @@ static void ATPrepAddGenStored(Relation rel,
 static void checkDependenciesForAddGenStored(Relation rel,
 											 AttrNumber attnum,
 											 const char *colName);
-static Node *matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno);
-static Node *findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
+static Node *matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno,
+								AddGenConstrError *hint);
+static Node *findUsableConstraintForAddGenStored(Relation rel,
+												 AttrNumber attnum,
 												 bool attisnotnull,
-												 const char *conname);
+												 const char *conname,
+												 AddGenConstrError *hint);
 static Node *reconstructRawExpr(Relation rel, Node *cookedExpr);
 static ObjectAddress ATExecAddGeneratedStored(AlteredTableInfo *tab,
 											  Relation rel,
@@ -9070,7 +9085,8 @@ checkDependenciesForAddGenStored(Relation rel,
  * It returns the expression tree of the other operand.
  */
 static Node *
-matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno)
+matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno,
+				   AddGenConstrError *hint)
 {
 	Node	   *left,
 			   *right;
@@ -9098,6 +9114,19 @@ matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno)
 			return right;
 	}
 
+	/* Try to give a more specific reason why the expression didn't match */
+
+	if (IsA(left, FuncExpr) || IsA(right, FuncExpr))
+	{
+		FuncExpr   *funcExpr = (FuncExpr *) (IsA(left, FuncExpr) ? left : right);
+
+		if (list_length(funcExpr->args) == 1 &&
+			funcExpr->funcformat == COERCE_IMPLICIT_CAST)
+		{
+			*hint = ADD_GEN_CONSTR_TYPE_CAST;
+		}
+	}
+
 	return NULL;
 }
 
@@ -9120,24 +9149,33 @@ matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno)
  */
 static Node *
 findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
-									bool attisnotnull,
-									const char *conname)
+									bool attisnotnull, const char *conname,
+									AddGenConstrError *hint)
 {
 	Relation	pg_constraint;
 	HeapTuple	conTup;
 	SysScanDesc scan;
-	ScanKeyData key;
+	ScanKeyData key[3];
 	Node	   *foundExpr;
 
 	pg_constraint = table_open(ConstraintRelationId, AccessShareLock);
-	ScanKeyInit(&key,
+	ScanKeyInit(&key[0],
 				Anum_pg_constraint_conrelid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(rel->rd_id));
+	ScanKeyInit(&key[1],
+				Anum_pg_constraint_contypid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(InvalidOid));
+	ScanKeyInit(&key[2],
+				Anum_pg_constraint_conname,
+				BTEqualStrategyNumber, F_NAMEEQ,
+				CStringGetDatum(conname));
 	scan = systable_beginscan(pg_constraint, ConstraintRelidTypidNameIndexId,
-							  true, NULL, 1, &key);
+							  true, NULL, 3, key);
 
 	foundExpr = NULL;
+	*hint = ADD_GEN_CONSTR_NOT_FOUND;
 
 	while (HeapTupleIsValid(conTup = systable_getnext(scan)))
 	{
@@ -9148,16 +9186,19 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 
 		if (con->contype != CONSTRAINT_CHECK)
 			continue;
-		if (strcmp(conname, NameStr(con->conname)) != 0)
-			continue;
 		/* !conenforced implies !convalidated, but let's be explicit about it */
 		if (!con->convalidated || !con->conenforced)
+		{
+			*hint = ADD_GEN_CONSTR_NOT_VALID;
 			continue;
+		}
 
 		val = SysCacheGetAttrNotNull(CONSTROID, conTup,
 									 Anum_pg_constraint_conbin);
 		conbin = TextDatumGetCString(val);
 		conexpr = stringToNode(conbin);
+
+		*hint = ADD_GEN_CONSTR_SHAPE_MISMATCH;
 
 		/* Try to match IS NOT DISTINCT */
 		if (IsA(conexpr, BoolExpr))
@@ -9172,19 +9213,19 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 
 				Assert(list_length(dist->args) == 2);
 
-				foundExpr = matchBinaryOpOnVar(dist->args, attnum, dist->opno);
+				foundExpr = matchBinaryOpOnVar(dist->args, attnum, dist->opno, hint);
 				if (foundExpr)
 					break;
 			}
 		}
 		/* If the column is NOT NULL, try to match = as well */
-		if (attisnotnull && IsA(conexpr, OpExpr))
+		else if (attisnotnull && IsA(conexpr, OpExpr))
 		{
 			OpExpr	   *op = (OpExpr *) conexpr;
 
 			if (list_length(op->args) == 2)
 			{
-				foundExpr = matchBinaryOpOnVar(op->args, attnum, op->opno);
+				foundExpr = matchBinaryOpOnVar(op->args, attnum, op->opno, hint);
 				if (foundExpr)
 					break;
 			}
@@ -9266,6 +9307,7 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 	ObjectAddress address;
 	Relation	pg_attribute;
 	Node	   *foundConstraintExpr = NULL;
+	AddGenConstrError hint;
 	Node	   *newRawDefExpr;
 	RawColumnDefault *rawDefault;
 	List	   *cookedResult = NIL;
@@ -9326,19 +9368,30 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 	 */
 	foundConstraintExpr = findUsableConstraintForAddGenStored(rel, attnum,
 															  attTup->attnotnull,
-															  def->conname);
+															  def->conname, &hint);
 	if (foundConstraintExpr == NULL)
+	{
+		if (hint == ADD_GEN_CONSTR_NOT_VALID)
+			ereport(ERROR,
+					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					errmsg("cannot convert column \"%s\" to generated", colName),
+					errdetail("constraint \"%s\" is not valid", def->conname));
+		if (hint == ADD_GEN_CONSTR_SHAPE_MISMATCH || hint == ADD_GEN_CONSTR_TYPE_CAST)
+			ereport(ERROR,
+					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+					errmsg("cannot convert column \"%s\" to generated", colName),
+					attTup->attnotnull ?
+					errdetail("could not find a valid constraint \"%s\" CHECK (\"%s\" = expr) or CHECK (\"%s\" IS NOT DISTINCT FROM (expr))",
+							  def->conname, colName, colName) :
+					errdetail("could not find a valid constraint \"%s\" CHECK (\"%s\" IS NOT DISTINCT FROM (expr))",
+							  def->conname, colName),
+					hint == ADD_GEN_CONSTR_TYPE_CAST ?
+					errhint("Ensure that the type of the expression matches the type of the column") : 0);
 		ereport(ERROR,
-				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("cannot convert a column into a stored generated column without a constraint to prove that the values are consistent"),
-				 attTup->attnotnull ?
-				 errdetail("could not find a valid constraint \"%s\" CHECK (\"%s\" = expr) or CHECK (\"%s\" IS NOT DISTINCT FROM (expr))",
-						   def->conname,
-						   colName,
-						   colName) :
-				 errdetail("could not find a valid constraint \"%s\" CHECK (\"%s\" IS NOT DISTINCT FROM (expr))",
-						   def->conname,
-						   colName)));
+				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				errmsg("cannot convert column \"%s\" to generated", colName),
+				errdetail("constraint \"%s\" not found", def->conname));
+	}
 
 	/* Mark as generated stored in pg_attribute */
 	pg_attribute = table_open(AttributeRelationId, RowExclusiveLock);

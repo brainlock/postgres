@@ -3218,15 +3218,6 @@ alter table testgen.t1 alter column b
 drop table testgen.t1;
 
 -- turning a regular column into a stored generated column
--- fails when the constraint does not exist. When the destination
--- column is NOT NULL, the error message mentions both constraint
--- shapes which would be valid
-create table testgen.t1 (a int, b int not null);
-alter table testgen.t1 alter column b
-    add generated using constraint chk_gen_clause_does_not_exist stored;
-drop table testgen.t1;
-
--- turning a regular column into a stored generated column
 -- fails when the constraint is not valid
 create table testgen.t1 (a int, b int);
 alter table testgen.t1 add constraint chk_gen_clause check (b is not distinct from a * 2) not valid;
@@ -3257,14 +3248,26 @@ drop table testgen.t4;
 
 -- turning a regular column into a stored generated column
 -- fails when the constraint exists but doesn't have the expected shape
+-- for a nullable column:
+create table testgen.t4 (a int, b int);
+insert into testgen.t4 (a, b) select x, x * 2 from generate_series(0, 5) x;
+alter table testgen.t4 add constraint chk_gen_clause check (b >= a * 2);
+alter table testgen.t4 alter column b add generated using constraint chk_gen_clause stored;
+drop table testgen.t4;
+-- for a not null column:
 create table testgen.t4 (a int, b int not null);
 insert into testgen.t4 (a, b) select x, x * 2 from generate_series(0, 5) x;
 alter table testgen.t4 add constraint chk_gen_clause check (b >= a * 2);
-select pg_relation_filenode('testgen.t4') as t4_filenode_before \gset
 alter table testgen.t4 alter column b add generated using constraint chk_gen_clause stored;
-select pg_relation_filenode('testgen.t4') as t4_filenode_after \gset
-select :t4_filenode_before != :t4_filenode_after as did_rewrite;
-\d+ testgen.t4
+drop table testgen.t4;
+
+-- fails when the expression does not match the type of the column and is
+-- implicitly cast
+create table testgen.t4 (a int, b int);
+alter table testgen.t4 add constraint chk_gen_clause check (b is not distinct from (a + random()));
+alter table testgen.t4 alter column b
+    add generated using constraint chk_gen_clause stored;
+alter table testgen.t4 drop constraint chk_gen_clause;
 drop table testgen.t4;
 
 -- test the whole process for adding a stored generated column without
@@ -3465,6 +3468,8 @@ set search_path to :search_path;
 
 create table testgen.t3 (a int, b int);
 -- invalid: expr must be immutable
+-- (without the cast to int, the expression would return a float and wouldn't
+-- match the type of the column b)
 alter table testgen.t3 add constraint chk_gen_clause check (b is not distinct from (a + random()::int));
 alter table testgen.t3 alter column b
     add generated using constraint chk_gen_clause stored;

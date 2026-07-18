@@ -471,7 +471,7 @@ check_completion("G\t", qr/GENERATED /,
 check_completion("U\t", qr/USING CONSTRAINT /,
 	"complete ALTER COLUMN <col> ADD GENERATED USING CONSTRAINT");
 
-check_completion("\t\t", qr/check_gen /,
+check_completion("\t", qr/check_gen /,
 	"complete ALTER COLUMN <col> ADD GENERATED USING CONSTRAINT offers check constraint names");
 
 check_completion("S\t", qr/STORED /,
