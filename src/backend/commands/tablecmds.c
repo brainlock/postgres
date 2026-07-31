@@ -9036,8 +9036,8 @@ checkDependenciesForAddGenStored(Relation rel,
 					if (relKind == RELKIND_SEQUENCE)
 						ereport(ERROR,
 								(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-								 errmsg("cannot convert a serial column to a stored generated column"),
-								 errdetail("\"%s\" of relation \"%s\"  depends on sequence %s",
+								 errmsg("cannot convert column \"%s\" to generated", colName),
+								 errdetail("Column \"%s\" of relation \"%s\" depends on sequence %s (it's likely a serial column).",
 										   colName, RelationGetRelationName(rel),
 										   getObjectDescription(&foundObject, false))));
 					break;
@@ -9060,7 +9060,7 @@ checkDependenciesForAddGenStored(Relation rel,
 					{
 						ereport(ERROR,
 								(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-								 errmsg("cannot convert a column referenced in a default expression to a stored generated column"),
+								 errmsg("cannot convert column \"%s\" to generated", colName),
 								 errdetail("Column \"%s\" is referenced by generated column \"%s\".",
 										   colName,
 										   get_attname(col.objectId, col.objectSubId, false))));
@@ -9337,15 +9337,16 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 	if (attTup->attidentity)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("Cannot convert an identity column to a stored generated column"),
-				 errdetail("column \"%s\" of relation \"%s\" is an identity column",
+				 errmsg("cannot convert column \"%s\" to generated", colName),
+				 errdetail("Column \"%s\" of relation \"%s\" is an identity column.",
 						   colName, RelationGetRelationName(rel))));
 
 	if (attTup->attgenerated)
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("column \"%s\" of relation \"%s\" is already a generated column",
-						colName, RelationGetRelationName(rel))));
+				 errmsg("cannot convert column \"%s\" to generated", colName),
+				 errdetail("Column \"%s\" of relation \"%s\" is already a generated column.",
+						   colName, RelationGetRelationName(rel))));
 
 	/*
 	 * This column might be referenced directly in a partition key, or through
@@ -9356,8 +9357,8 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 	if (has_partition_attrs(rel, colRefs, &is_expr))
 		ereport(ERROR,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
-				 errmsg("cannot convert a column into a stored generated column if it's referenced by a partition key"),
-				 errdetail("column \"%s\" is part of the partition key of relation \"%s\"",
+				 errmsg("cannot convert column \"%s\" to generated", colName),
+				 errdetail("Column \"%s\" is referenced in the partition key of relation \"%s\".",
 						   colName, RelationGetRelationName(rel))));
 
 	checkDependenciesForAddGenStored(rel, attnum, colName);
@@ -9375,22 +9376,22 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 			ereport(ERROR,
 					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					errmsg("cannot convert column \"%s\" to generated", colName),
-					errdetail("constraint \"%s\" is not valid", def->conname));
+					errdetail("The constraint \"%s\" is not valid.", def->conname));
 		if (hint == ADD_GEN_CONSTR_SHAPE_MISMATCH || hint == ADD_GEN_CONSTR_TYPE_CAST)
 			ereport(ERROR,
 					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					errmsg("cannot convert column \"%s\" to generated", colName),
 					attTup->attnotnull ?
-					errdetail("could not find a valid constraint \"%s\" CHECK (\"%s\" = expr) or CHECK (\"%s\" IS NOT DISTINCT FROM (expr))",
+					errdetail("Could not find a valid constraint \"%s\" CHECK (\"%s\" = expr) or CHECK (\"%s\" IS NOT DISTINCT FROM expr).",
 							  def->conname, colName, colName) :
-					errdetail("could not find a valid constraint \"%s\" CHECK (\"%s\" IS NOT DISTINCT FROM (expr))",
+					errdetail("Could not find a valid constraint \"%s\" CHECK (\"%s\" IS NOT DISTINCT FROM expr).",
 							  def->conname, colName),
 					hint == ADD_GEN_CONSTR_TYPE_CAST ?
-					errhint("Ensure that the type of the expression matches the type of the column") : 0);
+					errhint("Ensure that the type of the expression matches the type of the column.") : 0);
 		ereport(ERROR,
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				errmsg("cannot convert column \"%s\" to generated", colName),
-				errdetail("constraint \"%s\" not found", def->conname));
+				errdetail("Could not find CHECK constraint \"%s\".", def->conname));
 	}
 
 	/* Mark as generated stored in pg_attribute */

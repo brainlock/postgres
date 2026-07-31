@@ -4955,7 +4955,7 @@ rollback;
 alter table tgen.t1 alter column b
   add generated using constraint chk_gen_does_not_exist stored;
 ERROR:  cannot convert column "b" to generated
-DETAIL:  constraint "chk_gen_does_not_exist" not found
+DETAIL:  Could not find CHECK constraint "chk_gen_does_not_exist".
 -- fails when the constraint is not valid
 begin;
 alter table tgen.t1
@@ -4963,7 +4963,7 @@ alter table tgen.t1
 alter table tgen.t1 alter column b
   add generated using constraint chk_gen stored;
 ERROR:  cannot convert column "b" to generated
-DETAIL:  constraint "chk_gen" is not valid
+DETAIL:  The constraint "chk_gen" is not valid.
 rollback;
 -- fails when the constraint is not enforced
 begin;
@@ -4972,7 +4972,7 @@ alter table tgen.t1
 alter table tgen.t1 alter column b
     add generated using constraint chk_gen stored;
 ERROR:  cannot convert column "b" to generated
-DETAIL:  constraint "chk_gen" is not valid
+DETAIL:  The constraint "chk_gen" is not valid.
 rollback;
 -- check that neither the table nor indexes are rewritten
 begin;
@@ -4999,13 +4999,13 @@ begin;
 alter table tgen.t1 add constraint chk_gen check (b = a * 2);
 alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
 ERROR:  cannot convert column "b" to generated
-DETAIL:  could not find a valid constraint "chk_gen" CHECK ("b" IS NOT DISTINCT FROM (expr))
+DETAIL:  Could not find a valid constraint "chk_gen" CHECK ("b" IS NOT DISTINCT FROM expr).
 rollback;
 begin;
 alter table tgen.t1 add constraint chk_gen check (b >= a * 2);
 alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
 ERROR:  cannot convert column "b" to generated
-DETAIL:  could not find a valid constraint "chk_gen" CHECK ("b" IS NOT DISTINCT FROM (expr))
+DETAIL:  Could not find a valid constraint "chk_gen" CHECK ("b" IS NOT DISTINCT FROM expr).
 rollback;
 -- for a not null column:
 begin;
@@ -5013,7 +5013,7 @@ alter table tgen.t1 alter b set not null;
 alter table tgen.t1 add constraint chk_gen check (b >= a * 2);
 alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
 ERROR:  cannot convert column "b" to generated
-DETAIL:  could not find a valid constraint "chk_gen" CHECK ("b" = expr) or CHECK ("b" IS NOT DISTINCT FROM (expr))
+DETAIL:  Could not find a valid constraint "chk_gen" CHECK ("b" = expr) or CHECK ("b" IS NOT DISTINCT FROM expr).
 rollback;
 -- fails when the expression does not match the type of the column and is
 -- implicitly cast
@@ -5023,8 +5023,8 @@ alter table tgen.t1 add constraint chk_gen check (b is not distinct from (a + ra
 -- the hint should inform about the type cast
 alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
 ERROR:  cannot convert column "b" to generated
-DETAIL:  could not find a valid constraint "chk_gen" CHECK ("b" IS NOT DISTINCT FROM (expr))
-HINT:  Ensure that the type of the expression matches the type of the column
+DETAIL:  Could not find a valid constraint "chk_gen" CHECK ("b" IS NOT DISTINCT FROM expr).
+HINT:  Ensure that the type of the expression matches the type of the column.
 rollback;
 -- test the whole process for adding a stored generated column without
 -- long-lived exclusive locks
@@ -5202,7 +5202,7 @@ begin;
 alter table tgen.root alter column c
     add generated using constraint chk_gen stored;
 ERROR:  cannot convert column "c" to generated
-DETAIL:  constraint "chk_gen" not found
+DETAIL:  Could not find CHECK constraint "chk_gen".
 rollback;
 -- ... hence all these should result in an error
 alter table only tgen.root alter column c
@@ -5228,7 +5228,7 @@ drop cascades to table tgen.leaf
 alter table tgen.t1 alter column b
   add generated using constraint cdoesnotexist stored;
 ERROR:  cannot convert column "b" to generated
-DETAIL:  constraint "cdoesnotexist" not found
+DETAIL:  Could not find CHECK constraint "cdoesnotexist".
 -- invalid: only supports STORED. The following are syntax errors.
 alter table tgen.t1 alter column b add generated using constraint chk_gen;
 ERROR:  syntax error at or near ";"
@@ -5242,7 +5242,7 @@ LINE 1: ...ter column b add generated using constraint chk_gen virtual;
 begin;
 alter table tgen.t1 alter b add generated using constraint chk_gen stored;
 ERROR:  cannot convert column "b" to generated
-DETAIL:  constraint "chk_gen" not found
+DETAIL:  Could not find CHECK constraint "chk_gen".
 alter table tgen.t1 alter b add generated using constraint chk_gen stored;
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 rollback;
@@ -5250,31 +5250,32 @@ rollback;
 create table tgen.t2 (a int, b int not null generated always as (a * 2) stored);
 alter table tgen.t2 add constraint chk_gen check (b = a * 2);
 alter table tgen.t2 alter column b add generated using constraint chk_gen stored;
-ERROR:  column "b" of relation "t2" is already a generated column
+ERROR:  cannot convert column "b" to generated
+DETAIL:  Column "b" of relation "t2" is already a generated column.
 drop table tgen.t2;
 -- invalid: b is an identity column
 create table tgen.t2 (a int, b int generated always as identity);
 alter table tgen.t2 alter column b add generated using constraint doesnotexist stored;
-ERROR:  Cannot convert an identity column to a stored generated column
-DETAIL:  column "b" of relation "t2" is an identity column
+ERROR:  cannot convert column "b" to generated
+DETAIL:  Column "b" of relation "t2" is an identity column.
 drop table tgen.t2;
 create table tgen.t2 (a int, b int generated by default as identity );
 alter table tgen.t2 alter column b add generated using constraint doesnotexist stored;
-ERROR:  Cannot convert an identity column to a stored generated column
-DETAIL:  column "b" of relation "t2" is an identity column
+ERROR:  cannot convert column "b" to generated
+DETAIL:  Column "b" of relation "t2" is an identity column.
 drop table tgen.t2;
 -- invalid: b is a serial column
 create table tgen.t2 (a int, b bigserial);
 alter table tgen.t2 add constraint chk_gen check (b is not distinct from (1));
 alter table tgen.t2 alter column b add generated using constraint chk_gen stored;
-ERROR:  cannot convert a serial column to a stored generated column
-DETAIL:  "b" of relation "t2"  depends on sequence sequence tgen.t2_b_seq
+ERROR:  cannot convert column "b" to generated
+DETAIL:  Column "b" of relation "t2" depends on sequence sequence tgen.t2_b_seq (it's likely a serial column).
 drop table tgen.t2;
 -- invalid: c is referenced by another generated column
 create table tgen.t2 (a int, b int generated always as (c + 1), c int);
 alter table tgen.t2 add constraint chk_gen check (c is not distinct from (1));
 alter table tgen.t2 alter column c add generated using constraint chk_gen stored;
-ERROR:  cannot convert a column referenced in a default expression to a stored generated column
+ERROR:  cannot convert column "c" to generated
 DETAIL:  Column "c" is referenced by generated column "b".
 drop table tgen.t2;
 -- invalid: c references another generated column
@@ -5288,14 +5289,14 @@ drop table tgen.t2;
 create table tgen.t2 (a int, b int not null) partition by hash (b);
 alter table tgen.t2 add constraint chk_gen check (b = a + 1);
 alter table tgen.t2 alter b add generated using constraint chk_gen stored;
-ERROR:  cannot convert a column into a stored generated column if it's referenced by a partition key
-DETAIL:  column "b" is part of the partition key of relation "t2"
+ERROR:  cannot convert column "b" to generated
+DETAIL:  Column "b" is referenced in the partition key of relation "t2".
 drop table tgen.t2;
 create table tgen.t2 (a int, b int) partition by hash (coalesce(b, 123));
 alter table tgen.t2 add constraint chk_gen check (b is not distinct from a + 1);
 alter table tgen.t2 alter b add generated using constraint chk_gen stored;
-ERROR:  cannot convert a column into a stored generated column if it's referenced by a partition key
-DETAIL:  column "b" is part of the partition key of relation "t2"
+ERROR:  cannot convert column "b" to generated
+DETAIL:  Column "b" is referenced in the partition key of relation "t2".
 drop table tgen.t2;
 -- test for a whole-row reference
 -- since it's not possible to reference schema.table in partition by range,
@@ -5305,14 +5306,14 @@ set search_path to tgen, public;
 create table t2 (a int, b int) partition by range ((t2));
 alter table tgen.t2 add constraint chk_gen check (b is not distinct from a + 1);
 alter table tgen.t2 alter b add generated using constraint chk_gen stored;
-ERROR:  cannot convert a column into a stored generated column if it's referenced by a partition key
-DETAIL:  column "b" is part of the partition key of relation "t2"
+ERROR:  cannot convert column "b" to generated
+DETAIL:  Column "b" is referenced in the partition key of relation "t2".
 drop table tgen.t2;
 create table t2 (a int, b int) partition by range ((t2 is null));
 alter table tgen.t2 add constraint chk_gen check (b is not distinct from a + 1);
 alter table tgen.t2 alter b add generated using constraint chk_gen stored;
-ERROR:  cannot convert a column into a stored generated column if it's referenced by a partition key
-DETAIL:  column "b" is part of the partition key of relation "t2"
+ERROR:  cannot convert column "b" to generated
+DETAIL:  Column "b" is referenced in the partition key of relation "t2".
 drop table tgen.t2;
 set search_path to :search_path;
 create table tgen.t2 (a int, b int);
