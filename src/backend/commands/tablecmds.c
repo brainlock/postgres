@@ -9033,11 +9033,17 @@ checkDependenciesForAddGenStored(Relation rel,
 				{
 					char		relKind = get_rel_relkind(foundObject.objectId);
 
+					/*
+					 * While it is possible to alter any sequence to be owned
+					 * by an arbitrary column, the most likely legitimate use
+					 * is for a serial column. Let's assume this is the case
+					 * for the sake of a more helpful error message.
+					 */
 					if (relKind == RELKIND_SEQUENCE)
 						ereport(ERROR,
 								(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 								 errmsg("cannot convert column \"%s\" to generated", colName),
-								 errdetail("Column \"%s\" of relation \"%s\" depends on sequence %s (it's likely a serial column).",
+								 errdetail("Column \"%s\" of relation \"%s\" is a serial column (depends on sequence \"%s\").",
 										   colName, RelationGetRelationName(rel),
 										   getObjectDescription(&foundObject, false))));
 					break;

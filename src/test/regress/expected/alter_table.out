@@ -5269,7 +5269,7 @@ create table tgen.t2 (a int, b bigserial);
 alter table tgen.t2 add constraint chk_gen check (b is not distinct from (1));
 alter table tgen.t2 alter column b add generated using constraint chk_gen stored;
 ERROR:  cannot convert column "b" to generated
-DETAIL:  Column "b" of relation "t2" depends on sequence sequence tgen.t2_b_seq (it's likely a serial column).
+DETAIL:  Column "b" of relation "t2" is a serial column (depends on sequence "sequence tgen.t2_b_seq").
 drop table tgen.t2;
 -- invalid: c is referenced by another generated column
 create table tgen.t2 (a int, b int generated always as (c + 1), c int);
