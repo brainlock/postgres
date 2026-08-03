@@ -8954,16 +8954,23 @@ ATPrepAddGenStored(Relation rel,
 				   LOCKMODE lockmode)
 {
 	/*
-	 * Reject ONLY if there are child tables.
+	 * This routine is called on the top table directly with recursing=false,
+	 * and on all children tables via ATSimpleRecursion with recursing=true.
+	 *
+	 * At the top level, forbid ONLY (i.e. recurse=false) if there are child
+	 * tables. We only check this at the top level, otherwise we would prevent
+	 * this operation from being applied to hierarchies with depth > 2.
 	 */
 	if (!recursing && !recurse &&
 		find_inheritance_children(RelationGetRelid(rel), lockmode))
 		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("ALTER COLUMN / ADD GENERATED USING CONSTRAINT ... STORED must be applied to child tables too")));
+				errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("cannot convert column \"%s\" to generated", cmd->name),
+				errdetail("Converting a column to a stored generated column can only be done on the whole hierarchy at once."),
+				errhint("Use this command on the root table/partition without ONLY."));
 
 	/*
-	 * Cannot change only inherited columns to be stored generated columns.
+	 * Don't allow this operation to be applied to inherited columns directly.
 	 */
 	if (!recursing)
 	{
@@ -8973,16 +8980,18 @@ ATPrepAddGenStored(Relation rel,
 		tuple = SearchSysCacheCopyAttName(RelationGetRelid(rel), cmd->name);
 		if (!HeapTupleIsValid(tuple))
 			ereport(ERROR,
-					(errcode(ERRCODE_UNDEFINED_COLUMN),
-					 errmsg("column \"%s\" of relation \"%s\" does not exist",
-							cmd->name, RelationGetRelationName(rel))));
+					errcode(ERRCODE_UNDEFINED_COLUMN),
+					errmsg("column \"%s\" of relation \"%s\" does not exist",
+						   cmd->name, RelationGetRelationName(rel)));
 
 		attTup = (Form_pg_attribute) GETSTRUCT(tuple);
 
 		if (attTup->attinhcount > 0)
 			ereport(ERROR,
-					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
-					 errmsg("cannot change inherited column to be a stored generated column")));
+					errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+					errmsg("cannot convert column \"%s\" to generated", cmd->name),
+					errdetail("Converting a column to a stored generated column can only be done on the whole hierarchy at once."),
+					errhint("Use this command on the root table/partition without ONLY."));
 	}
 }
 

@@ -5184,11 +5184,15 @@ rollback;
 -- altering a single partition is not allowed
 alter table tgen.tpart_p1 alter column b
     add generated using constraint chk_gen stored;
-ERROR:  cannot change inherited column to be a stored generated column
+ERROR:  cannot convert column "b" to generated
+DETAIL:  Converting a column to a stored generated column can only be done on the whole hierarchy at once.
+HINT:  Use this command on the root table/partition without ONLY.
 -- altering only the parent table is not allowed
 alter table only tgen.tpart alter column b
     add generated using constraint chk_gen stored;
-ERROR:  ALTER COLUMN / ADD GENERATED USING CONSTRAINT ... STORED must be applied to child tables too
+ERROR:  cannot convert column "b" to generated
+DETAIL:  Converting a column to a stored generated column can only be done on the whole hierarchy at once.
+HINT:  Use this command on the root table/partition without ONLY.
 drop table tgen.tpart;
 -- test support for inheritance and subpartitions
 create table tgen.root (a int, b int, c int);
@@ -5207,19 +5211,29 @@ rollback;
 -- ... hence all these should result in an error
 alter table only tgen.root alter column c
     add generated using constraint chk_gen stored;
-ERROR:  ALTER COLUMN / ADD GENERATED USING CONSTRAINT ... STORED must be applied to child tables too
+ERROR:  cannot convert column "c" to generated
+DETAIL:  Converting a column to a stored generated column can only be done on the whole hierarchy at once.
+HINT:  Use this command on the root table/partition without ONLY.
 alter table tgen.intermediate alter column c
     add generated using constraint chk_gen stored;
-ERROR:  cannot change inherited column to be a stored generated column
+ERROR:  cannot convert column "c" to generated
+DETAIL:  Converting a column to a stored generated column can only be done on the whole hierarchy at once.
+HINT:  Use this command on the root table/partition without ONLY.
 alter table only tgen.intermediate alter column c
     add generated using constraint chk_gen stored;
-ERROR:  ALTER COLUMN / ADD GENERATED USING CONSTRAINT ... STORED must be applied to child tables too
+ERROR:  cannot convert column "c" to generated
+DETAIL:  Converting a column to a stored generated column can only be done on the whole hierarchy at once.
+HINT:  Use this command on the root table/partition without ONLY.
 alter table tgen.leaf alter column c
     add generated using constraint chk_gen stored;
-ERROR:  cannot change inherited column to be a stored generated column
+ERROR:  cannot convert column "c" to generated
+DETAIL:  Converting a column to a stored generated column can only be done on the whole hierarchy at once.
+HINT:  Use this command on the root table/partition without ONLY.
 alter table only tgen.leaf alter column c
     add generated using constraint chk_gen stored;
-ERROR:  cannot change inherited column to be a stored generated column
+ERROR:  cannot convert column "c" to generated
+DETAIL:  Converting a column to a stored generated column can only be done on the whole hierarchy at once.
+HINT:  Use this command on the root table/partition without ONLY.
 drop table tgen.root cascade;
 NOTICE:  drop cascades to 2 other objects
 DETAIL:  drop cascades to table tgen.intermediate
