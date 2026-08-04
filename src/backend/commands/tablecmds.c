@@ -804,10 +804,7 @@ static void ATExecMergePartitions(List **wqueue, AlteredTableInfo *tab, Relation
 static void ATExecSplitPartition(List **wqueue, AlteredTableInfo *tab,
 								 Relation rel, PartitionCmd *cmd,
 								 AlterTableUtilityContext *context);
-static void ATPrepAddGenStored(Relation rel,
-							   AlterTableCmd *cmd,
-							   bool recurse, bool recursing,
-							   LOCKMODE lockmode);
+static void ATPrepAddGenStored(Relation rel, AlterTableCmd *cmd, bool recurse, bool recursing);
 static void checkDependenciesForAddGenStored(Relation rel,
 											 AttrNumber attnum,
 											 const char *colName);
@@ -5166,7 +5163,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 			ATSimplePermissions(cmd->subtype, rel,
 								ATT_TABLE | ATT_PARTITIONED_TABLE | ATT_FOREIGN_TABLE);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode, context);
-			ATPrepAddGenStored(rel, cmd, recurse, recursing, lockmode);
+			ATPrepAddGenStored(rel, cmd, recurse, recursing);
 			pass = AT_PASS_ADD_OTHERCONSTR;
 			break;
 		case AT_DropExpression: /* ALTER COLUMN DROP EXPRESSION */
@@ -8948,10 +8945,7 @@ ATExecSetExpression(AlteredTableInfo *tab, Relation rel, const char *colName,
  * whole hierarchy at once.
  */
 static void
-ATPrepAddGenStored(Relation rel,
-				   AlterTableCmd *cmd,
-				   bool recurse, bool recursing,
-				   LOCKMODE lockmode)
+ATPrepAddGenStored(Relation rel, AlterTableCmd *cmd, bool recurse, bool recursing)
 {
 	/*
 	 * This routine is called on the top table directly with recursing=false,
@@ -8960,9 +8954,13 @@ ATPrepAddGenStored(Relation rel,
 	 * At the top level, forbid ONLY (i.e. recurse=false) if there are child
 	 * tables. We only check this at the top level, otherwise we would prevent
 	 * this operation from being applied to hierarchies with depth > 2.
+	 *
+	 * Note that when we're called with ONLY, ATSimpleRecursion hasn't seen
+	 * any child rel yet, but having find_inheritance_children acquire locks
+	 * is not necessary. It found *any* child rel, we'd anyway error out.
 	 */
 	if (!recursing && !recurse &&
-		find_inheritance_children(RelationGetRelid(rel), lockmode))
+		find_inheritance_children(RelationGetRelid(rel), NoLock))
 		ereport(ERROR,
 				errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				errmsg("cannot convert column \"%s\" to generated", cmd->name),
