@@ -809,12 +809,12 @@ static void checkDependenciesForAddGenStored(Relation rel,
 											 AttrNumber attnum,
 											 const char *colName);
 static Node *matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno,
-								AddGenConstrError *hint);
+								AddGenConstrError *reason);
 static Node *findUsableConstraintForAddGenStored(Relation rel,
 												 AttrNumber attnum,
 												 bool attisnotnull,
 												 const char *conname,
-												 AddGenConstrError *hint);
+												 AddGenConstrError *reason);
 static Node *reconstructRawExpr(Relation rel, Node *cookedExpr);
 static ObjectAddress ATExecAddGeneratedStored(AlteredTableInfo *tab,
 											  Relation rel,
@@ -9099,7 +9099,7 @@ checkDependenciesForAddGenStored(Relation rel,
  */
 static Node *
 matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno,
-				   AddGenConstrError *hint)
+				   AddGenConstrError *reason)
 {
 	Node	   *left,
 			   *right;
@@ -9136,7 +9136,7 @@ matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno,
 		if (list_length(funcExpr->args) == 1 &&
 			funcExpr->funcformat == COERCE_IMPLICIT_CAST)
 		{
-			*hint = ADD_GEN_CONSTR_TYPE_CAST;
+			*reason = ADD_GEN_CONSTR_TYPE_CAST;
 		}
 	}
 
@@ -9158,12 +9158,14 @@ matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno,
  *   CHECK (column IS NOT DISTINCT FROM expr)
  *   CHECK (column = expr)
  *
- * If a valid constraint is found, this returns the expr node.
+ * If a valid constraint is found, this returns the expr node, otherwise
+ * it returns null and sets an error code in *reason, allowing the caller to
+ * provide an appropriate error message.
  */
 static Node *
 findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 									bool attisnotnull, const char *conname,
-									AddGenConstrError *hint)
+									AddGenConstrError *reason)
 {
 	Relation	pg_constraint;
 	HeapTuple	conTup;
@@ -9188,7 +9190,7 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 							  true, NULL, 3, key);
 
 	foundExpr = NULL;
-	*hint = ADD_GEN_CONSTR_NOT_FOUND;
+	*reason = ADD_GEN_CONSTR_NOT_FOUND;
 
 	while (HeapTupleIsValid(conTup = systable_getnext(scan)))
 	{
@@ -9202,7 +9204,7 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 		/* !conenforced implies !convalidated, but let's be explicit about it */
 		if (!con->convalidated || !con->conenforced)
 		{
-			*hint = ADD_GEN_CONSTR_NOT_VALID;
+			*reason = ADD_GEN_CONSTR_NOT_VALID;
 			continue;
 		}
 
@@ -9211,7 +9213,7 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 		conbin = TextDatumGetCString(val);
 		conexpr = stringToNode(conbin);
 
-		*hint = ADD_GEN_CONSTR_SHAPE_MISMATCH;
+		*reason = ADD_GEN_CONSTR_SHAPE_MISMATCH;
 
 		/* Try to match IS NOT DISTINCT */
 		if (IsA(conexpr, BoolExpr))
@@ -9226,7 +9228,7 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 
 				Assert(list_length(dist->args) == 2);
 
-				foundExpr = matchBinaryOpOnVar(dist->args, attnum, dist->opno, hint);
+				foundExpr = matchBinaryOpOnVar(dist->args, attnum, dist->opno, reason);
 				if (foundExpr)
 					break;
 			}
@@ -9238,7 +9240,7 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 
 			if (list_length(op->args) == 2)
 			{
-				foundExpr = matchBinaryOpOnVar(op->args, attnum, op->opno, hint);
+				foundExpr = matchBinaryOpOnVar(op->args, attnum, op->opno, reason);
 				if (foundExpr)
 					break;
 			}
@@ -9320,7 +9322,7 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 	ObjectAddress address;
 	Relation	pg_attribute;
 	Node	   *foundConstraintExpr = NULL;
-	AddGenConstrError hint;
+	AddGenConstrError reason;
 	Node	   *newRawDefExpr;
 	RawColumnDefault *rawDefault;
 	List	   *cookedResult = NIL;
@@ -9382,15 +9384,15 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 	 */
 	foundConstraintExpr = findUsableConstraintForAddGenStored(rel, attnum,
 															  attTup->attnotnull,
-															  def->conname, &hint);
+															  def->conname, &reason);
 	if (foundConstraintExpr == NULL)
 	{
-		if (hint == ADD_GEN_CONSTR_NOT_VALID)
+		if (reason == ADD_GEN_CONSTR_NOT_VALID)
 			ereport(ERROR,
 					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					errmsg("cannot convert column \"%s\" to generated", colName),
 					errdetail("The constraint \"%s\" is not valid.", def->conname));
-		if (hint == ADD_GEN_CONSTR_SHAPE_MISMATCH || hint == ADD_GEN_CONSTR_TYPE_CAST)
+		if (reason == ADD_GEN_CONSTR_SHAPE_MISMATCH || reason == ADD_GEN_CONSTR_TYPE_CAST)
 			ereport(ERROR,
 					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					errmsg("cannot convert column \"%s\" to generated", colName),
@@ -9399,7 +9401,7 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 							  def->conname, colName, colName) :
 					errdetail("Could not find a valid constraint \"%s\" CHECK (\"%s\" IS NOT DISTINCT FROM expr).",
 							  def->conname, colName),
-					hint == ADD_GEN_CONSTR_TYPE_CAST ?
+					reason == ADD_GEN_CONSTR_TYPE_CAST ?
 					errhint("Ensure that the type of the expression matches the type of the column.") : 0);
 		ereport(ERROR,
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
