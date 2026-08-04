@@ -9081,7 +9081,7 @@ checkDependenciesForAddGenStored(Relation rel,
 					break;
 				}
 			default:
-				/* We're not interested in the row */
+				/* Other dependencies aren't a problem. */
 				break;
 		}
 	}
