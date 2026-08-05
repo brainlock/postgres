@@ -4939,16 +4939,14 @@ alter table tgen.t1 alter b set not null;
 alter table tgen.t1 add constraint chk_gen_equal check (a * 2 = b);
 alter table tgen.t1 alter column b
     add generated using constraint chk_gen_equal stored;
-\d+ tgen.t1
-                                                   Table "tgen.t1"
- Column |  Type   | Collation | Nullable |              Default               | Storage | Stats target | Description 
---------+---------+-----------+----------+------------------------------------+---------+--------------+-------------
- a      | integer |           |          |                                    | plain   |              | 
- b      | integer |           | not null | generated always as (a * 2) stored | plain   |              | 
+\d tgen.t1
+                               Table "tgen.t1"
+ Column |  Type   | Collation | Nullable |              Default               
+--------+---------+-----------+----------+------------------------------------
+ a      | integer |           |          | 
+ b      | integer |           | not null | generated always as (a * 2) stored
 Check constraints:
     "chk_gen_equal" CHECK ((a * 2) = b)
-Not-null constraints:
-    "t1_b_not_null" NOT NULL "b"
 
 rollback;
 -- fails when the constraint does not exist
@@ -5109,12 +5107,12 @@ insert into tgen.t2 (a) values (400);
 drop trigger tgen_trig on tgen.t2;
 drop function tgen.gen();
 insert into tgen.t2 (a) values (500);
-\d+ tgen.t2
-                                                   Table "tgen.t2"
- Column |  Type   | Collation | Nullable |              Default               | Storage | Stats target | Description 
---------+---------+-----------+----------+------------------------------------+---------+--------------+-------------
- a      | integer |           |          |                                    | plain   |              | 
- b      | integer |           |          | generated always as (a * 2) stored | plain   |              | 
+\d tgen.t2
+                               Table "tgen.t2"
+ Column |  Type   | Collation | Nullable |              Default               
+--------+---------+-----------+----------+------------------------------------
+ a      | integer |           |          | 
+ b      | integer |           |          | generated always as (a * 2) stored
 Check constraints:
     "chk_gen" CHECK (NOT b IS DISTINCT FROM (a * 2))
 

@@ -3199,7 +3199,7 @@ alter table tgen.t1 alter b set not null;
 alter table tgen.t1 add constraint chk_gen_equal check (a * 2 = b);
 alter table tgen.t1 alter column b
     add generated using constraint chk_gen_equal stored;
-\d+ tgen.t1
+\d tgen.t1
 rollback;
 
 -- fails when the constraint does not exist
@@ -3314,7 +3314,7 @@ insert into tgen.t2 (a) values (400);
 drop trigger tgen_trig on tgen.t2;
 drop function tgen.gen();
 insert into tgen.t2 (a) values (500);
-\d+ tgen.t2
+\d tgen.t2
 select * from tgen.t2 order by a nulls first;
 drop table tgen.t2;
 
