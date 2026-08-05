@@ -8957,7 +8957,7 @@ ATPrepAddGenStored(Relation rel, AlterTableCmd *cmd, bool recurse, bool recursin
 	 *
 	 * Note that when we're called with ONLY, ATSimpleRecursion hasn't seen
 	 * any child rel yet, but having find_inheritance_children acquire locks
-	 * is not necessary. It found *any* child rel, we'd anyway error out.
+	 * is not necessary. If it found *any* child rel, we'd anyway error out.
 	 */
 	if (!recursing && !recurse &&
 		find_inheritance_children(RelationGetRelid(rel), NoLock))
@@ -9127,14 +9127,24 @@ matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno,
 			return right;
 	}
 
-	/* Try to give a more specific reason why the expression didn't match */
+	/*
+	 * If we get here, the expression didn't match. Let's try to give a more
+	 * specific reason why this was the case.
+	 */
 
+	/*
+	 * If one side of the operation is an implicit cast, we can guess that we
+	 * are dealing with a constraint like CHECK (column = other_column + f())
+	 * where f() returns a different type than type of the column, and there
+	 * is an implicit cast between the two types. It's easy to make this
+	 * mistake, so let's try to give a helpful error message.
+	 */
 	if (IsA(left, FuncExpr) || IsA(right, FuncExpr))
 	{
-		FuncExpr   *funcExpr = (FuncExpr *) (IsA(left, FuncExpr) ? left : right);
+		FuncExpr   *fExpr = (FuncExpr *) (IsA(left, FuncExpr) ? left : right);
 
-		if (list_length(funcExpr->args) == 1 &&
-			funcExpr->funcformat == COERCE_IMPLICIT_CAST)
+		if (list_length(fExpr->args) == 1 &&
+			fExpr->funcformat == COERCE_IMPLICIT_CAST)
 		{
 			*reason = ADD_GEN_CONSTR_TYPE_CAST;
 		}
@@ -9144,9 +9154,8 @@ matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno,
 }
 
 /*
- * Subroutine for ATExecAddGeneratedStored, used to find a CHECK constraint
- * to prove that the column values statisfy what will be the generator
- * expression.
+ * Subroutine for ATExecAddGeneratedStored, used to determine whether the given
+ * constraint proves that the values are equal to some expression.
  *
  * Given a rel, a column and a constraint name, we look up a valid CHECK
  * constraint on the rel, with the given name, with a specific shape.
