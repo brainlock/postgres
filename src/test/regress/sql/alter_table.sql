@@ -3202,26 +3202,6 @@ alter table tgen.t1 alter column b
 \d tgen.t1
 rollback;
 
--- fails when the constraint does not exist
-alter table tgen.t1 alter column b
-  add generated using constraint chk_gen_does_not_exist stored;
-
--- fails when the constraint is not valid
-begin;
-alter table tgen.t1
-    add constraint chk_gen check (b is not distinct from a * 2) not valid;
-alter table tgen.t1 alter column b
-  add generated using constraint chk_gen stored;
-rollback;
-
--- fails when the constraint is not enforced
-begin;
-alter table tgen.t1
-    add constraint chk_gen check (b is not distinct from a * 2) not enforced;
-alter table tgen.t1 alter column b
-    add generated using constraint chk_gen stored;
-rollback;
-
 -- check that neither the table nor indexes are rewritten
 begin;
 alter table tgen.t1
@@ -3235,33 +3215,6 @@ select pg_relation_filenode('tgen.t1') as t1_filenode_after \gset
 select pg_relation_filenode('tgen.t1_a_idx') as t1_idx_filenode_after \gset
 select :t1_filenode_before = :t1_filenode_after as did_skip_table_rewrite,
        :t1_idx_filenode_before = :t1_idx_filenode_after as did_skip_idx_rewrite;
-rollback;
-
--- fails when the constraint exists but doesn't have the expected shape
--- for a nullable column:
-begin;
-alter table tgen.t1 add constraint chk_gen check (b = a * 2);
-alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
-rollback;
-begin;
-alter table tgen.t1 add constraint chk_gen check (b >= a * 2);
-alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
-rollback;
-
--- for a not null column:
-begin;
-alter table tgen.t1 alter b set not null;
-alter table tgen.t1 add constraint chk_gen check (b >= a * 2);
-alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
-rollback;
-
--- fails when the expression does not match the type of the column and is
--- implicitly cast
-begin;
-truncate tgen.t1;
-alter table tgen.t1 add constraint chk_gen check (b is not distinct from (a + random()));
--- the hint should inform about the type cast
-alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
 rollback;
 
 -- test the whole process for adding a stored generated column without
@@ -3444,6 +3397,53 @@ alter table tgen.t2 add constraint chk_gen check (b is not distinct from a + 1);
 alter table tgen.t2 alter b add generated using constraint chk_gen stored;
 drop table tgen.t2;
 set search_path to :search_path;
+
+-- fails when the constraint does not exist
+alter table tgen.t1 alter column b
+    add generated using constraint chk_gen_does_not_exist stored;
+
+-- fails when the constraint is not valid
+begin;
+alter table tgen.t1
+    add constraint chk_gen check (b is not distinct from a * 2) not valid;
+alter table tgen.t1 alter column b
+    add generated using constraint chk_gen stored;
+rollback;
+
+-- fails when the constraint is not enforced
+begin;
+alter table tgen.t1
+    add constraint chk_gen check (b is not distinct from a * 2) not enforced;
+alter table tgen.t1 alter column b
+    add generated using constraint chk_gen stored;
+rollback;
+
+-- fails when the constraint exists but doesn't have the expected shape
+-- for a nullable column:
+begin;
+alter table tgen.t1 add constraint chk_gen check (b = a * 2);
+alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
+rollback;
+begin;
+alter table tgen.t1 add constraint chk_gen check (b >= a * 2);
+alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
+rollback;
+
+-- for a not null column:
+begin;
+alter table tgen.t1 alter b set not null;
+alter table tgen.t1 add constraint chk_gen check (b >= a * 2);
+alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
+rollback;
+
+-- fails when the expression does not match the type of the column and is
+-- implicitly cast
+begin;
+truncate tgen.t1;
+alter table tgen.t1 add constraint chk_gen check (b is not distinct from (a + random()));
+-- the hint should inform about the type cast
+alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
+rollback;
 
 create table tgen.t2 (a int, b int);
 -- invalid: expr must be immutable
