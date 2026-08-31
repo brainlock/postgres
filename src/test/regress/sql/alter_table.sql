@@ -3456,3 +3456,8 @@ create table tgen.t_simple (a int, b int not null);
 insert into tgen.t_simple (a, b) values (1, 2), (2, 3);
 alter table tgen.t_simple add constraint chk_gen check (b is not distinct from a + 1);
 alter table tgen.t_simple alter b add generated using constraint chk_gen stored;
+
+create table tgen.t_null_equal (a int, b int not null);
+insert into tgen.t_null_equal (a, b) values (1, 2), (2, 3), (null, 42);
+alter table tgen.t_null_equal add constraint chk_gen check (b = a + 1);
+alter table tgen.t_null_equal alter b add generated using constraint chk_gen stored;
