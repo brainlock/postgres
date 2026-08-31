@@ -3220,13 +3220,14 @@ select :t1_filenode_before = :t1_filenode_after as did_skip_table_rewrite,
 rollback;
 
 -- test the whole process for adding a stored generated column without
--- long-lived exclusive locks
-create table tgen.t2 (a int);
-select pg_relation_filenode('tgen.t2') as t2_filenode_before \gset
-insert into tgen.t2 select x from generate_series(1, 5) x;
+-- long-lived exclusive locks. The t_migration database is intentionally
+-- left behind for pg_dump/pg_restore tests.
+create table tgen.t_migration (a int);
+select pg_relation_filenode('tgen.t_migration') as t_migration_filenode_before \gset
+insert into tgen.t_migration select x from generate_series(1, 5) x;
 -- test nulls, too
-insert into tgen.t2 (a) values (null);
-alter table tgen.t2 add column b int;
+insert into tgen.t_migration (a) values (null);
+alter table tgen.t_migration add column b int;
 -- take care of new and updated columns
 create function tgen.gen () returns trigger language plpgsql as $$
 begin
@@ -3234,44 +3235,41 @@ begin
 end
 $$;
 create trigger tgen_trig
-    before insert or update on tgen.t2
+    before insert or update on tgen.t_migration
     for each row execute function tgen.gen();
 -- add the constraint as not valid: enforced only for new and updated rows
 begin;
-alter table tgen.t2
+alter table tgen.t_migration
     add constraint chk_gen check (b is not distinct from a * 2) not valid;
 select locktype, mode from pg_locks
-  where relation = 'tgen.t2'::regclass and granted;
+  where relation = 'tgen.t_migration'::regclass and granted;
 commit;
-insert into tgen.t2 (a) values (100), (200), (300);
+insert into tgen.t_migration (a) values (100), (200), (300);
 -- backfill existing rows at the appropriate pace
-update tgen.t2 set b = a * 2 where b is null;
+update tgen.t_migration set b = a * 2 where b is null;
 -- validate: this scans the table, but without an exclusive lock
 begin;
-alter table tgen.t2 validate constraint chk_gen;
+alter table tgen.t_migration validate constraint chk_gen;
 select locktype, mode from pg_locks
-  where relation = 'tgen.t2'::regclass and granted;
+  where relation = 'tgen.t_migration'::regclass and granted;
 commit;
 -- now the schema update, which doesn't need to rewrite the table thanks to
 -- the constraint
 begin;
-alter table tgen.t2 alter column b
+alter table tgen.t_migration alter column b
     add generated using constraint chk_gen stored;
 select locktype, mode from pg_locks
-where relation = 'tgen.t2'::regclass and granted;
+where relation = 'tgen.t_migration'::regclass and granted;
 commit;
-select pg_relation_filenode('tgen.t2') as t2_filenode_after \gset
-select :t2_filenode_before = :t2_filenode_after as did_skip_rewrite;
-select * from tgen.t2;
+select pg_relation_filenode('tgen.t_migration') as t_migration_filenode_after \gset
+select :t_migration_filenode_before = :t_migration_filenode_after as did_skip_rewrite;
+select * from tgen.t_migration;
 -- verify that it's still possible to insert rows (the trigger is still
 -- installed at this point)
-insert into tgen.t2 (a) values (400);
-drop trigger tgen_trig on tgen.t2;
-drop function tgen.gen();
-insert into tgen.t2 (a) values (500);
-\d tgen.t2
-select * from tgen.t2 order by a nulls first;
-drop table tgen.t2;
+insert into tgen.t_migration (a) values (400);
+insert into tgen.t_migration (a) values (500);
+\d tgen.t_migration
+select * from tgen.t_migration order by a nulls first;
 
 -- test support for partitioned tables
 create table tgen.tpart (a int, b int) partition by hash (a);
@@ -3283,16 +3281,6 @@ create table tgen.tpart_p2 partition of tgen.tpart
     for values with (modulus 2, remainder 1);
 insert into tgen.tpart (a, b) select x, x * 2 from generate_series(1, 5) x;
 
--- altering the parent table, recursing
-begin;
-alter table tgen.tpart alter column b
-    add generated using constraint chk_gen stored;
--- expected: all the partitions have been changed
-\d tgen.tpart
-\d tgen.tpart_p1
-\d tgen.tpart_p2
-rollback;
-
 -- altering a single partition is not allowed
 alter table tgen.tpart_p1 alter column b
     add generated using constraint chk_gen stored;
@@ -3301,14 +3289,20 @@ alter table tgen.tpart_p1 alter column b
 alter table only tgen.tpart alter column b
     add generated using constraint chk_gen stored;
 
-drop table tgen.tpart;
+-- altering the parent table, recursing
+alter table tgen.tpart alter column b
+    add generated using constraint chk_gen stored;
+-- expected: all the partitions have been changed
+\d tgen.tpart
+\d tgen.tpart_p1
+\d tgen.tpart_p2
+
+-- tpart intentionally left behind for pg_dump/pg_restore tests
 
 -- test support for inheritance and subpartitions
 create table tgen.root (a int, b int, c int);
 create table tgen.intermediate () inherits (tgen.root);
 create table tgen.leaf () inherits (tgen.intermediate);
-alter table tgen.tpart
-    add constraint chk_gen check (b is not distinct from a + b);
 
 -- it's only allowed to change the whole hierarchy at once...
 begin;
@@ -3388,16 +3382,15 @@ drop table tgen.t2;
 -- test for a whole-row reference
 -- since it's not possible to reference schema.table in partition by range,
 -- temporarily hack the search_path
+-- the two databases are intentionally left behind for pg_dump/pg_restore tests
 show search_path \gset
 set search_path to tgen, public;
-create table t2 (a int, b int) partition by range ((t2));
-alter table tgen.t2 add constraint chk_gen check (b is not distinct from a + 1);
-alter table tgen.t2 alter b add generated using constraint chk_gen stored;
-drop table tgen.t2;
-create table t2 (a int, b int) partition by range ((t2 is null));
-alter table tgen.t2 add constraint chk_gen check (b is not distinct from a + 1);
-alter table tgen.t2 alter b add generated using constraint chk_gen stored;
-drop table tgen.t2;
+create table t_wholerow_1 (a int, b int) partition by range ((t_wholerow_1));
+alter table tgen.t_wholerow_1 add constraint chk_gen check (b is not distinct from a + 1);
+alter table tgen.t_wholerow_1 alter b add generated using constraint chk_gen stored;
+create table t_wholerow_2 (a int, b int) partition by range ((t_wholerow_2 is null));
+alter table tgen.t_wholerow_2 add constraint chk_gen check (b is not distinct from a + 1);
+alter table tgen.t_wholerow_2 alter b add generated using constraint chk_gen stored;
 set search_path to :search_path;
 
 -- fails when the constraint does not exist
@@ -3457,4 +3450,9 @@ alter table tgen.t2 alter column b
 drop table tgen.t2;
 
 drop table tgen.t1;
-drop schema tgen;
+
+-- left behind for pg_dump/pg_restore tests
+create table tgen.t_simple (a int, b int not null);
+insert into tgen.t_simple (a, b) values (1, 2), (2, 3);
+alter table tgen.t_simple add constraint chk_gen check (b is not distinct from a + 1);
+alter table tgen.t_simple alter b add generated using constraint chk_gen stored;
