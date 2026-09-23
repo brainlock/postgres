@@ -3451,3 +3451,9 @@ create table tgen.t_simple (a int, b int not null);
 insert into tgen.t_simple (a, b) values (1, 2), (2, 3);
 alter table tgen.t_simple add constraint chk_gen check (b is not distinct from a + 1);
 alter table tgen.t_simple alter b add generated using constraint chk_gen stored;
+
+create table tgen.t_repro_1 (a numeric, b numeric);
+insert into tgen.t_repro_1 values ('1.0', '1.00'), ('1.0', '1.0');
+create unique index on tgen.t_repro_1 ((b::text));
+alter table tgen.t_repro_1 add constraint chk_gen check (b is not distinct from a);
+alter table tgen.t_repro_1 alter b add generated using constraint chk_gen stored;
