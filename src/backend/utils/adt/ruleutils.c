@@ -10796,6 +10796,27 @@ get_oper_expr(OpExpr *expr, deparse_context *context)
 		Node	   *arg2 = (Node *) lsecond(args);
 
 		get_rule_expr_paren(arg1, context, true, (Node *) expr);
+
+		/*
+		 * A (ROW op ROW) is transformed to element-wise comparisons on parse,
+		 * so if we find it here it's because at least one side was not a bare
+		 * RowExpr. Typically, this would have been a "ROW(...)::record",
+		 * which is parsed to a RowExpr with COERCE_IMPLICIT_CAST. We must
+		 * force the explict cast on at least one side of the expression to
+		 * avoid losing information.
+		 */
+		if (IsA(arg1, RowExpr) && IsA(arg2, RowExpr))
+		{
+			RowExpr    *row_expr1 = (RowExpr *) arg1;
+			RowExpr    *row_expr2 = (RowExpr *) arg2;
+
+			if (row_expr1->row_format == COERCE_IMPLICIT_CAST &&
+				row_expr2->row_format == COERCE_IMPLICIT_CAST)
+				appendStringInfo(buf, "::%s",
+								 format_type_with_typemod(row_expr1->row_typeid,
+														  -1));
+		}
+
 		appendStringInfo(buf, " %s ",
 						 generate_operator_name(opno,
 												exprType(arg1),
