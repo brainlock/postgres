@@ -1460,3 +1460,41 @@ DROP TABLE ruletest_t2;
 DROP TABLE ruletest_t1;
 
 DROP USER regress_rule_user1;
+
+-- put various expression trees through a parse/deparse round trip
+create function check_deparse_roundtrip(expr text) returns text as $$
+declare
+    deparsed text;
+    result text = 'ok';
+begin
+    create table test_roundtrip (a int);
+
+    execute format(
+            'create index test_roundtrip_i1 on test_roundtrip (a) where %s',
+            expr);
+
+    select into deparsed pg_get_expr(indpred, indrelid)
+        from pg_index where indexrelid = 'test_roundtrip_i1'::regclass;
+
+    execute format(
+            'create index test_roundtrip_i2 on test_roundtrip (a) where %s',
+            deparsed);
+
+    if (select indpred::text from pg_index where indexrelid = 'test_roundtrip_i1'::regclass) <>
+       (select indpred::text from pg_index where indexrelid = 'test_roundtrip_i2'::regclass) then
+        result := format(
+            'deparse roundtrip failed for expr "%s" (deparsed as "%s")',
+            expr,
+            deparsed);
+    end if;
+
+    drop table test_roundtrip;
+
+    return result;
+end;
+$$ language plpgsql;
+select check_deparse_roundtrip('row(1) = row(2)');
+select check_deparse_roundtrip('row(1) > row(2)');
+select check_deparse_roundtrip('row(1)::record > row(2)');
+select check_deparse_roundtrip('row(1)::record = row(2)');
+select check_deparse_roundtrip('row(1)::record *= row(2)');

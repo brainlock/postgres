@@ -10795,6 +10795,20 @@ get_oper_expr(OpExpr *expr, deparse_context *context)
 		Node	   *arg1 = (Node *) linitial(args);
 		Node	   *arg2 = (Node *) lsecond(args);
 
+		/*
+		 * If a (ROW op ROW) was not transformed to something else on parse,
+		 * we need to ensure that at least one of the two arguments deparses
+		 * to an explicit TypeCast, otherwise this information will be lost on
+		 * a parse/deparse round trip.
+		 */
+		if (IsA(arg1, RowExpr) && IsA(arg2, RowExpr))
+		{
+			RowExpr    *row_expr1 = (RowExpr *) copyObject(arg1);
+
+			row_expr1->row_format = COERCE_EXPLICIT_CAST;
+			arg1 = (Node *) row_expr1;
+		}
+
 		get_rule_expr_paren(arg1, context, true, (Node *) expr);
 		appendStringInfo(buf, " %s ",
 						 generate_operator_name(opno,
