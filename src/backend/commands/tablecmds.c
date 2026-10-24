@@ -337,7 +337,6 @@ typedef enum AddGenConstrError
 	ADD_GEN_CONSTR_NOT_FOUND = 0,
 	ADD_GEN_CONSTR_NOT_VALID,
 	ADD_GEN_CONSTR_SHAPE_MISMATCH,
-	ADD_GEN_CONSTR_TYPE_CAST,
 } AddGenConstrError;
 
 /* Alter table target-type flags for ATSimplePermissions */
@@ -773,8 +772,6 @@ static void ATPrepAddGenStored(Relation rel, AlterTableCmd *cmd, bool recurse, b
 static void checkDependenciesForAddGenStored(Relation rel,
 											 AttrNumber attnum,
 											 const char *colName);
-static Node *matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno,
-								AddGenConstrError *reason);
 static Node *findUsableConstraintForAddGenStored(Relation rel,
 												 AttrNumber attnum,
 												 const char *conname,
@@ -9041,76 +9038,13 @@ checkDependenciesForAddGenStored(Relation rel,
 }
 
 /*
- * Given a list of two nodes (operands of a binary function), an operator and a
- * column, this matches when the operator is an equality and one of the two
- * operands is a Var referencing the given column.
- *
- * It returns the expression tree of the other operand.
- */
-static Node *
-matchBinaryOpOnVar(List *args, AttrNumber attnum, Oid opno,
-				   AddGenConstrError *reason)
-{
-	Node	   *left,
-			   *right;
-
-	Assert(list_length(args) == 2);
-
-	/* Support both orders of the operands */
-	if (IsA(linitial(args), Var))
-	{
-		left = linitial(args);
-		right = lsecond(args);
-	}
-	else
-	{
-		right = linitial(args);
-		left = lsecond(args);
-	}
-
-	if (IsA(left, Var))
-	{
-		Var		   *var = (Var *) left;
-
-		if (var->varattno == attnum &&
-			op_mergejoinable(opno, exprType((Node *) var)))
-			return right;
-	}
-
-	/*
-	 * If we get here, the expression didn't match. Let's try to give a more
-	 * specific reason why this was the case.
-	 */
-
-	/*
-	 * If one side of the operation is an implicit cast, we can guess that we
-	 * are dealing with a constraint like CHECK (column = other_column + f())
-	 * where f() returns a different type than type of the column, and there
-	 * is an implicit cast between the two types. It's easy to make this
-	 * mistake, so let's try to give a helpful error message.
-	 */
-	if (IsA(left, FuncExpr) || IsA(right, FuncExpr))
-	{
-		FuncExpr   *fExpr = (FuncExpr *) (IsA(left, FuncExpr) ? left : right);
-
-		if (list_length(fExpr->args) == 1 &&
-			fExpr->funcformat == COERCE_IMPLICIT_CAST)
-		{
-			*reason = ADD_GEN_CONSTR_TYPE_CAST;
-		}
-	}
-
-	return NULL;
-}
-
-/*
  * Subroutine for ATExecAddGeneratedStored, used to determine whether the given
  * constraint proves that the values are equal to some expression.
  *
  * Given a rel, a column and a constraint name, we look up a valid CHECK
  * constraint on the rel, with the given name, with a specific shape:
  *
- *   CHECK (column IS NOT DISTINCT FROM expr)
+ *   CHECK ( pg_datum_image_equal(column, expr) )
  *
  * If a valid constraint is found, this returns the expr node, otherwise
  * it returns null and sets an error code in *reason, allowing the caller to
@@ -9169,22 +9103,36 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 
 		*reason = ADD_GEN_CONSTR_SHAPE_MISMATCH;
 
-		/* Try to match IS NOT DISTINCT */
-		if (IsA(conexpr, BoolExpr))
+		/* Try to match pg_datum_image_equal(column, expr) */
+		if (IsA(conexpr, FuncExpr))
 		{
-			BoolExpr   *negation = (BoolExpr *) conexpr;
+			FuncExpr   *fexpr = (FuncExpr *) conexpr;
 
-			if (list_length(negation->args) == 1
-				&& negation->boolop == NOT_EXPR
-				&& IsA(linitial(negation->args), DistinctExpr))
+			if (fexpr->funcid == F_PG_DATUM_IMAGE_EQUAL &&
+				list_length(fexpr->args) == 2)
 			{
-				DistinctExpr *dist = linitial(negation->args);
+				Node	   *left,
+						   *right;
 
-				Assert(list_length(dist->args) == 2);
+				/* Support both orders of the operands */
+				if (IsA(linitial(fexpr->args), Var))
+				{
+					left = linitial(fexpr->args);
+					right = lsecond(fexpr->args);
+				}
+				else
+				{
+					right = linitial(fexpr->args);
+					left = lsecond(fexpr->args);
+				}
 
-				foundExpr = matchBinaryOpOnVar(dist->args, attnum, dist->opno, reason);
-				if (foundExpr)
-					break;
+				if (IsA(left, Var))
+				{
+					Var		   *var = (Var *) left;
+
+					if (var->varattno == attnum)
+						foundExpr = right;
+				}
 			}
 		}
 	}
@@ -9333,14 +9281,12 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					errmsg("cannot convert column \"%s\" to generated", colName),
 					errdetail("The constraint \"%s\" is not valid.", def->conname));
-		if (reason == ADD_GEN_CONSTR_SHAPE_MISMATCH || reason == ADD_GEN_CONSTR_TYPE_CAST)
+		if (reason == ADD_GEN_CONSTR_SHAPE_MISMATCH)
 			ereport(ERROR,
 					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					errmsg("cannot convert column \"%s\" to generated", colName),
 					errdetail("The constraint \"%s\" is not of the form CHECK (\"%s\" IS NOT DISTINCT FROM expr).",
-							  def->conname, colName),
-					reason == ADD_GEN_CONSTR_TYPE_CAST ?
-					errhint("Ensure that the type of the expression matches the type of the column.") : 0);
+							  def->conname, colName));
 		ereport(ERROR,
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				errmsg("cannot convert column \"%s\" to generated", colName),
