@@ -3197,7 +3197,7 @@ insert into tgen.t1 (a, b)
   select x, x * 2 from generate_series(1, 5) x;
 
 begin;
-alter table tgen.t1 add constraint chk_gen check (b is not distinct from a * 2);
+alter table tgen.t1 add constraint chk_gen check (pg_datum_image_equal(b, a * 2));
 alter table tgen.t1 alter column b
   add generated using constraint chk_gen stored;
 \d tgen.t1
@@ -3206,7 +3206,7 @@ rollback;
 
 -- test that we accept IS NOT DISTINCT FROM with the operands swapped, too
 begin;
-alter table tgen.t1 add constraint chk_gen check (a * 2 is not distinct from b);
+alter table tgen.t1 add constraint chk_gen check (pg_datum_image_equal(a * 2, b));
 alter table tgen.t1 alter column b
     add generated using constraint chk_gen stored;
 \d tgen.t1
@@ -3216,7 +3216,7 @@ rollback;
 -- check that neither the table nor indexes are rewritten
 begin;
 alter table tgen.t1
-    add constraint chk_gen check (b is not distinct from a * 2);
+    add constraint chk_gen check (pg_datum_image_equal(b, a * 2));
 create index t1_a_idx on tgen.t1 (a);
 select pg_relation_filenode('tgen.t1') as t1_filenode_before \gset
 select pg_relation_filenode('tgen.t1_a_idx') as t1_idx_filenode_before \gset
@@ -3249,7 +3249,7 @@ create trigger tgen_trig
 -- add the constraint as not valid: enforced only for new and updated rows
 begin;
 alter table tgen.t_migration
-    add constraint chk_gen check (b is not distinct from a * 2) not valid;
+    add constraint chk_gen check (pg_datum_image_equal(b, a * 2)) not valid;
 select locktype, mode from pg_locks
   where relation = 'tgen.t_migration'::regclass and granted;
 commit;
@@ -3283,7 +3283,7 @@ select * from tgen.t_migration order by a nulls first;
 -- test support for partitioned tables
 create table tgen.tpart (a int, b int) partition by hash (a);
 alter table tgen.tpart
-    add constraint chk_gen check (b is not distinct from a * 2);
+    add constraint chk_gen check (pg_datum_image_equal(b, a * 2));
 create table tgen.tpart_p1 partition of tgen.tpart
     for values with (modulus 2, remainder 0);
 create table tgen.tpart_p2 partition of tgen.tpart
@@ -3340,14 +3340,14 @@ alter table tgen.t1 alter column b add generated using constraint chk_gen virtua
 
 -- invalid: b is already a generated column
 begin;
-alter table tgen.t1 add constraint chk_gen check (b is not distinct from a * 2);
+alter table tgen.t1 add constraint chk_gen check (pg_datum_image_equal(b, a * 2));
 alter table tgen.t1 alter b add generated using constraint chk_gen stored;
 alter table tgen.t1 alter b add generated using constraint chk_gen stored;
 rollback;
 
 -- invalid: b is already a generated column
 create table tgen.t2 (a int, b int not null generated always as (a * 2) stored);
-alter table tgen.t2 add constraint chk_gen check (b is not distinct from a * 2);
+alter table tgen.t2 add constraint chk_gen check (pg_datum_image_equal(b, a * 2));
 alter table tgen.t2 alter column b add generated using constraint chk_gen stored;
 drop table tgen.t2;
 
@@ -3361,25 +3361,25 @@ drop table tgen.t2;
 
 -- invalid: b is a serial column
 create table tgen.t2 (a int, b bigserial);
-alter table tgen.t2 add constraint chk_gen check (b is not distinct from (1));
+alter table tgen.t2 add constraint chk_gen check (pg_datum_image_equal(b, 1));
 alter table tgen.t2 alter column b add generated using constraint chk_gen stored;
 drop table tgen.t2;
 
 -- invalid: c is referenced by another generated column
 create table tgen.t2 (a int, b int generated always as (c + 1), c int);
-alter table tgen.t2 add constraint chk_gen check (c is not distinct from (1));
+alter table tgen.t2 add constraint chk_gen check (pg_datum_image_equal(c, 1));
 alter table tgen.t2 alter column c add generated using constraint chk_gen stored;
 drop table tgen.t2;
 
 -- invalid: c references another generated column
 create table tgen.t2 (a int, b int generated always as (a + 1), c int);
-alter table tgen.t2 add constraint chk_gen check (c is not distinct from (b + 1));
+alter table tgen.t2 add constraint chk_gen check (pg_datum_image_equal(c, b + 1));
 alter table tgen.t2 alter column c add generated using constraint chk_gen stored;
 drop table tgen.t2;
 
 -- invalid: b is referenced in a partition key
 create table tgen.t2 (a int, b int not null) partition by hash (b);
-alter table tgen.t2 add constraint chk_gen check (b is not distinct from a + 1);
+alter table tgen.t2 add constraint chk_gen check (pg_datum_image_equal(b, a + 1));
 alter table tgen.t2 alter b add generated using constraint chk_gen stored;
 drop table tgen.t2;
 -- test for a whole-row reference
@@ -3389,10 +3389,10 @@ drop table tgen.t2;
 show search_path \gset
 set search_path to tgen, public;
 create table t_wholerow_1 (a int, b int) partition by range ((t_wholerow_1));
-alter table tgen.t_wholerow_1 add constraint chk_gen check (b is not distinct from a + 1);
+alter table tgen.t_wholerow_1 add constraint chk_gen check (pg_datum_image_equal(b, a + 1));
 alter table tgen.t_wholerow_1 alter b add generated using constraint chk_gen stored;
 create table t_wholerow_2 (a int, b int) partition by range ((t_wholerow_2 is null));
-alter table tgen.t_wholerow_2 add constraint chk_gen check (b is not distinct from a + 1);
+alter table tgen.t_wholerow_2 add constraint chk_gen check (pg_datum_image_equal(b, a + 1));
 alter table tgen.t_wholerow_2 alter b add generated using constraint chk_gen stored;
 set search_path to :search_path;
 
@@ -3403,7 +3403,7 @@ alter table tgen.t1 alter column b
 -- fails when the constraint is not valid
 begin;
 alter table tgen.t1
-    add constraint chk_gen check (b is not distinct from a * 2) not valid;
+    add constraint chk_gen check (pg_datum_image_equal(b, a * 2)) not valid;
 alter table tgen.t1 alter column b
     add generated using constraint chk_gen stored;
 rollback;
@@ -3411,7 +3411,7 @@ rollback;
 -- fails when the constraint is not enforced
 begin;
 alter table tgen.t1
-    add constraint chk_gen check (b is not distinct from a * 2) not enforced;
+    add constraint chk_gen check (pg_datum_image_equal(b, a * 2)) not enforced;
 alter table tgen.t1 alter column b
     add generated using constraint chk_gen stored;
 rollback;
@@ -3426,20 +3426,11 @@ alter table tgen.t1 add constraint chk_gen check (b >= a * 2);
 alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
 rollback;
 
--- fails when the expression does not match the type of the column and is
--- implicitly cast
-begin;
-truncate tgen.t1;
-alter table tgen.t1 add constraint chk_gen check (b is not distinct from (a + random()));
--- the hint should inform about the type cast
-alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
-rollback;
-
 create table tgen.t2 (a int, b int);
 -- invalid: expr must be immutable
 -- (without the cast to int, the expression would return a float and wouldn't
 -- match the type of the column b)
-alter table tgen.t2 add constraint chk_gen check (b is not distinct from (a + random()::int));
+alter table tgen.t2 add constraint chk_gen check (pg_datum_image_equal(b, (a + random())::int));
 alter table tgen.t2 alter column b
     add generated using constraint chk_gen stored;
 drop table tgen.t2;
@@ -3449,11 +3440,11 @@ drop table tgen.t1;
 -- left behind for pg_dump/pg_restore tests
 create table tgen.t_simple (a int, b int not null);
 insert into tgen.t_simple (a, b) values (1, 2), (2, 3);
-alter table tgen.t_simple add constraint chk_gen check (b is not distinct from a + 1);
+alter table tgen.t_simple add constraint chk_gen check (pg_datum_image_equal(b, a + 1));
 alter table tgen.t_simple alter b add generated using constraint chk_gen stored;
 
 create table tgen.t_repro_1 (a numeric, b numeric);
 insert into tgen.t_repro_1 values ('1.0', '1.00'), ('1.0', '1.0');
 create unique index on tgen.t_repro_1 ((b::text));
-alter table tgen.t_repro_1 add constraint chk_gen check (b is not distinct from a);
+alter table tgen.t_repro_1 add constraint chk_gen check (pg_datum_image_equal(b, a));
 alter table tgen.t_repro_1 alter b add generated using constraint chk_gen stored;
