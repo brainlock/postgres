@@ -9111,27 +9111,18 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 			if (fexpr->funcid == F_PG_DATUM_IMAGE_EQUAL &&
 				list_length(fexpr->args) == 2)
 			{
-				Node	   *left,
-						   *right;
+				Node	   *left = linitial(fexpr->args),
+						   *right = lsecond(fexpr->args);
 
 				/* Support both orders of the operands */
-				if (IsA(linitial(fexpr->args), Var))
+				if (IsA(left, Var) && ((Var *) left)->varattno == attnum)
 				{
-					left = linitial(fexpr->args);
-					right = lsecond(fexpr->args);
-				}
-				else
+					foundExpr = right;
+					assert(((Var *) left)->vartype == exprType(right));
+				} else if (IsA(right, Var) && ((Var *) right)->varattno == attnum)
 				{
-					right = linitial(fexpr->args);
-					left = lsecond(fexpr->args);
-				}
-
-				if (IsA(left, Var))
-				{
-					Var		   *var = (Var *) left;
-
-					if (var->varattno == attnum)
-						foundExpr = right;
+					foundExpr = left;
+					assert(((Var *) right)->vartype == exprType(left));
 				}
 			}
 		}

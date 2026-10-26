@@ -3204,13 +3204,21 @@ alter table tgen.t1 alter column b
 insert into tgen.t1 (a, b) values (10, 20);
 rollback;
 
--- test that we accept IS NOT DISTINCT FROM with the operands swapped, too
+-- test that we accept the constraint with the operands swapped, too
 begin;
 alter table tgen.t1 add constraint chk_gen check (pg_datum_image_equal(a * 2, b));
 alter table tgen.t1 alter column b
     add generated using constraint chk_gen stored;
 \d tgen.t1
 insert into tgen.t1 (a, b) values (10, 20);
+rollback;
+begin;
+update tgen.t1 set b = a;
+alter table tgen.t1 add constraint chk_gen check (pg_datum_image_equal(a, b));
+alter table tgen.t1 alter column b
+    add generated using constraint chk_gen stored;
+\d tgen.t1
+insert into tgen.t1 (a, b) values (10, 10);
 rollback;
 
 -- check that neither the table nor indexes are rewritten

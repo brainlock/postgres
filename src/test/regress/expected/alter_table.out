@@ -4924,7 +4924,7 @@ insert into tgen.t1 (a, b) values (10, 20);
 ERROR:  cannot insert a non-DEFAULT value into column "b"
 DETAIL:  Column "b" is a generated column.
 rollback;
--- test that we accept IS NOT DISTINCT FROM with the operands swapped, too
+-- test that we accept the constraint with the operands swapped, too
 begin;
 alter table tgen.t1 add constraint chk_gen check (pg_datum_image_equal(a * 2, b));
 alter table tgen.t1 alter column b
@@ -4939,6 +4939,24 @@ Check constraints:
     "chk_gen" CHECK (pg_datum_image_equal(a * 2, b))
 
 insert into tgen.t1 (a, b) values (10, 20);
+ERROR:  cannot insert a non-DEFAULT value into column "b"
+DETAIL:  Column "b" is a generated column.
+rollback;
+begin;
+update tgen.t1 set b = a;
+alter table tgen.t1 add constraint chk_gen check (pg_datum_image_equal(a, b));
+alter table tgen.t1 alter column b
+    add generated using constraint chk_gen stored;
+\d tgen.t1
+                             Table "tgen.t1"
+ Column |  Type   | Collation | Nullable |            Default             
+--------+---------+-----------+----------+--------------------------------
+ a      | integer |           |          | 
+ b      | integer |           |          | generated always as (a) stored
+Check constraints:
+    "chk_gen" CHECK (pg_datum_image_equal(a, b))
+
+insert into tgen.t1 (a, b) values (10, 10);
 ERROR:  cannot insert a non-DEFAULT value into column "b"
 DETAIL:  Column "b" is a generated column.
 rollback;
