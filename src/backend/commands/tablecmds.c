@@ -9276,7 +9276,7 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 			ereport(ERROR,
 					errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 					errmsg("cannot convert column \"%s\" to generated", colName),
-					errdetail("The constraint \"%s\" is not of the form CHECK (\"%s\" IS NOT DISTINCT FROM expr).",
+					errdetail("The constraint \"%s\" is not of the form CHECK ( pg_datum_image_equal(\"%s\", expr) ).",
 							  def->conname, colName));
 		ereport(ERROR,
 				errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
