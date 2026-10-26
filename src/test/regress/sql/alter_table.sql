@@ -3445,14 +3445,18 @@ drop table tgen.t2;
 
 drop table tgen.t1;
 
--- left behind for pg_dump/pg_restore tests
+-- intentionally left behind for pg_dump/pg_restore tests
 create table tgen.t_simple (a int, b int not null);
 insert into tgen.t_simple (a, b) values (1, 2), (2, 3);
 alter table tgen.t_simple add constraint chk_gen check (pg_datum_image_equal(b, a + 1));
 alter table tgen.t_simple alter b add generated using constraint chk_gen stored;
+\d tgen.t_simple
 
-create table tgen.t_repro_1 (a numeric, b numeric);
-insert into tgen.t_repro_1 values ('1.0', '1.00'), ('1.0', '1.0');
-create unique index on tgen.t_repro_1 ((b::text));
-alter table tgen.t_repro_1 add constraint chk_gen check (pg_datum_image_equal(b, a));
-alter table tgen.t_repro_1 alter b add generated using constraint chk_gen stored;
+-- intentionally left behind for pg_dump/pg_restore tests
+create table tgen.t_tsvect (a text, b text, c tsvector);
+insert into tgen.t_tsvect (a, b) values ('foo', 'bar'), ('bar', 'baz');
+update tgen.t_tsvect set c = to_tsvector('english', a || ' ' ||  b);
+alter table tgen.t_tsvect add constraint chk_gen
+    check ( pg_datum_image_equal(c, to_tsvector('english', a || ' ' ||  b)) );
+alter table tgen.t_tsvect alter c add generated using constraint chk_gen stored;
+\d tgen.t_tsvect
