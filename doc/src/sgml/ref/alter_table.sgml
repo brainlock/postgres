@@ -289,8 +289,9 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
      </para>
 
      <para>
-      The constraint must be of the form
-      <literal>CHECK (column_name IS NOT DISTINCT FROM expr)</literal>.
+      The constraint must be of the form <literal>CHECK ( pg_datum_image_equal(
+      <replaceable class="parameter">column_name</replaceable>,
+      <replaceable class="parameter">expr</replaceable>) )</literal>.
      </para>
 
      <para>
