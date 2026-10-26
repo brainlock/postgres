@@ -5298,13 +5298,13 @@ begin;
 alter table tgen.t1 add constraint chk_gen check (b = a * 2);
 alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
 ERROR:  cannot convert column "b" to generated
-DETAIL:  The constraint "chk_gen" is not of the form CHECK ("b" IS NOT DISTINCT FROM expr).
+DETAIL:  The constraint "chk_gen" is not of the form CHECK ( pg_datum_image_equal("b", expr) ).
 rollback;
 begin;
 alter table tgen.t1 add constraint chk_gen check (b >= a * 2);
 alter table tgen.t1 alter column b add generated using constraint chk_gen stored;
 ERROR:  cannot convert column "b" to generated
-DETAIL:  The constraint "chk_gen" is not of the form CHECK ("b" IS NOT DISTINCT FROM expr).
+DETAIL:  The constraint "chk_gen" is not of the form CHECK ( pg_datum_image_equal("b", expr) ).
 rollback;
 create table tgen.t2 (a int, b int);
 -- invalid: expr must be immutable
