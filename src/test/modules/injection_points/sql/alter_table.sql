@@ -13,7 +13,7 @@ CREATE SCHEMA testgen_inj;
 CREATE TABLE testgen_inj.t1 (a INT, b INT NOT NULL);
 INSERT INTO testgen_inj.t1 (a, b) VALUES (1, 2);
 ALTER TABLE testgen_inj.t1 ADD CONSTRAINT c1 CHECK (b > 0);
-ALTER TABLE testgen_inj.t1 ADD CONSTRAINT c2 CHECK (b IS NOT DISTINCT FROM a * 2);
+ALTER TABLE testgen_inj.t1 ADD CONSTRAINT c2 CHECK (pg_datum_image_equal(b, a * 2));
 CREATE INDEX ON testgen_inj.t1 (b);
 ALTER TABLE testgen_inj.t1 ALTER b
     ADD GENERATED USING CONSTRAINT c2 STORED;
