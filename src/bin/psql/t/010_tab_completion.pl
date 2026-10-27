@@ -46,7 +46,7 @@ $node->safe_psql('postgres',
 	  . "CREATE TYPE enum1 AS ENUM ('foo', 'bar', 'baz', 'BLACK');\n"
 	  . "CREATE PUBLICATION some_publication;\n"
 	  . "CREATE TABLE gencol_test (a int primary key, b int);\n"
-	  . "ALTER TABLE gencol_test ADD CONSTRAINT check_gen CHECK (b IS NOT DISTINCT FROM (a + 1));\n"
+	  . "ALTER TABLE gencol_test ADD CONSTRAINT check_gen CHECK (pg_datum_image_equal(b, a + 1));\n"
 );
 
 # In a VPATH build, we'll be started in the source directory, but we want

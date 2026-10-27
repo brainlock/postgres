@@ -9119,7 +9119,8 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 				{
 					foundExpr = right;
 					assert(((Var *) left)->vartype == exprType(right));
-				} else if (IsA(right, Var) && ((Var *) right)->varattno == attnum)
+				}
+				else if (IsA(right, Var) && ((Var *) right)->varattno == attnum)
 				{
 					foundExpr = left;
 					assert(((Var *) right)->vartype == exprType(left));
