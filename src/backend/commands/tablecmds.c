@@ -9215,7 +9215,7 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 	Assert(def->generated_when == ATTRIBUTE_IDENTITY_ALWAYS);
 	Assert(def->generated_kind == ATTRIBUTE_GENERATED_STORED);
 
-	tuple = SearchSysCacheAttName(RelationGetRelid(rel), colName);
+	tuple = SearchSysCacheCopyAttName(RelationGetRelid(rel), colName);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
@@ -9291,7 +9291,7 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 	CatalogTupleUpdate(pg_attribute, &tuple->t_self, tuple);
 	table_close(pg_attribute, RowExclusiveLock);
 
-	ReleaseSysCache(tuple);
+	heap_freetuple(tuple);
 
 	/* Make above changes visible */
 	CommandCounterIncrement();
