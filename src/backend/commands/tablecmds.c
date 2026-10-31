@@ -9117,13 +9117,13 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 				/* Support both orders of the operands */
 				if (IsA(left, Var) && ((Var *) left)->varattno == attnum)
 				{
+					Assert(((Var *) left)->vartype == exprType(right));
 					foundExpr = right;
-					assert(((Var *) left)->vartype == exprType(right));
 				}
 				else if (IsA(right, Var) && ((Var *) right)->varattno == attnum)
 				{
+					Assert(((Var *) right)->vartype == exprType(left));
 					foundExpr = left;
-					assert(((Var *) right)->vartype == exprType(left));
 				}
 			}
 		}
