@@ -8951,27 +8951,27 @@ checkDependenciesForAddGenStored(Relation rel,
 								 const char *colName)
 {
 	Relation	pg_depend;
-	ScanKeyData keys[3];
+	ScanKeyData key[3];
 	SysScanDesc scan;
 	HeapTuple	depTup;
 
 	pg_depend = table_open(DependRelationId, AccessShareLock);
 
-	ScanKeyInit(&keys[0],
+	ScanKeyInit(&key[0],
 				Anum_pg_depend_refclassid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(RelationRelationId));
-	ScanKeyInit(&keys[1],
+	ScanKeyInit(&key[1],
 				Anum_pg_depend_refobjid,
 				BTEqualStrategyNumber, F_OIDEQ,
 				ObjectIdGetDatum(RelationGetRelid(rel)));
-	ScanKeyInit(&keys[2],
+	ScanKeyInit(&key[2],
 				Anum_pg_depend_refobjsubid,
 				BTEqualStrategyNumber, F_INT4EQ,
 				Int32GetDatum(attnum));
 
 	scan = systable_beginscan(pg_depend, DependReferenceIndexId, true,
-							  NULL, 3, keys);
+							  NULL, 3, key);
 
 	while (HeapTupleIsValid(depTup = systable_getnext(scan)))
 	{
