@@ -9035,7 +9035,7 @@ checkDependenciesForAddGenStored(Relation rel,
 	}
 
 	systable_endscan(scan);
-	table_close(pg_depend, NoLock);
+	table_close(pg_depend, AccessShareLock);
 }
 
 /*
