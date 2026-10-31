@@ -8967,8 +8967,8 @@ checkDependenciesForAddGenStored(Relation rel,
 				ObjectIdGetDatum(RelationGetRelid(rel)));
 	ScanKeyInit(&keys[2],
 				Anum_pg_depend_refobjsubid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(attnum));
+				BTEqualStrategyNumber, F_INT4EQ,
+				Int32GetDatum(attnum));
 
 	scan = systable_beginscan(pg_depend, DependReferenceIndexId, true,
 							  NULL, 3, keys);
