@@ -776,6 +776,7 @@ static Node *findUsableConstraintForAddGenStored(Relation rel,
 												 AttrNumber attnum,
 												 const char *conname,
 												 AddGenConstrError *reason);
+static Node *matchDatumImageEqualOnVar(Node *expr, AttrNumber attnum);
 static Node *reconstructRawExpr(Relation rel, Node *cookedExpr);
 static ObjectAddress ATExecAddGeneratedStored(AlteredTableInfo *tab,
 											  Relation rel,
@@ -9080,52 +9081,29 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 	foundExpr = NULL;
 	*reason = ADD_GEN_CONSTR_NOT_FOUND;
 
-	while (HeapTupleIsValid(conTup = systable_getnext(scan)))
+	if (HeapTupleIsValid(conTup = systable_getnext(scan)))
 	{
 		Form_pg_constraint con = GETSTRUCT(conTup);
-		char	   *conbin;
-		Datum		val;
-		Node	   *conexpr;
 
 		if (con->contype != CONSTRAINT_CHECK)
-			continue;
+			*reason = ADD_GEN_CONSTR_NOT_FOUND;
 		/* !conenforced implies !convalidated, but let's be explicit about it */
-		if (!con->convalidated || !con->conenforced)
-		{
+		else if (!con->convalidated || !con->conenforced)
 			*reason = ADD_GEN_CONSTR_NOT_VALID;
-			continue;
-		}
-
-		val = SysCacheGetAttrNotNull(CONSTROID, conTup,
-									 Anum_pg_constraint_conbin);
-		conbin = TextDatumGetCString(val);
-		conexpr = stringToNode(conbin);
-
-		*reason = ADD_GEN_CONSTR_SHAPE_MISMATCH;
-
-		/* Try to match pg_datum_image_equal(column, expr) */
-		if (IsA(conexpr, FuncExpr))
+		else
 		{
-			FuncExpr   *fexpr = (FuncExpr *) conexpr;
+			char	   *conbin;
+			Datum		val;
+			Node	   *conexpr;
 
-			if (fexpr->funcid == F_PG_DATUM_IMAGE_EQUAL &&
-				list_length(fexpr->args) == 2)
-			{
-				Node	   *left = linitial(fexpr->args),
-						   *right = lsecond(fexpr->args);
+			val = SysCacheGetAttrNotNull(CONSTROID, conTup,
+										 Anum_pg_constraint_conbin);
+			conbin = TextDatumGetCString(val);
+			conexpr = stringToNode(conbin);
 
-				/* Support both orders of the operands */
-				if (IsA(left, Var) && ((Var *) left)->varattno == attnum)
-				{
-					Assert(((Var *) left)->vartype == exprType(right));
-					foundExpr = right;
-				}
-				else if (IsA(right, Var) && ((Var *) right)->varattno == attnum)
-				{
-					Assert(((Var *) right)->vartype == exprType(left));
-					foundExpr = left;
-				}
-			}
+			foundExpr = matchDatumImageEqualOnVar(conexpr, attnum);
+			if (foundExpr == NULL)
+				*reason = ADD_GEN_CONSTR_SHAPE_MISMATCH;
 		}
 	}
 
@@ -9133,6 +9111,44 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 	table_close(pg_constraint, AccessShareLock);
 
 	return foundExpr;
+}
+
+/*
+ * Given an expression tree and an attnum, this tries to match
+ *
+ *   pg_datum_image_equal(arg1, arg2)
+ *
+ * where either arg1 or arg2 is a Var referencing the given attno, returning
+ * the other argument.
+ */
+static Node *
+matchDatumImageEqualOnVar(Node *expr, AttrNumber attnum)
+{
+	if (IsA(expr, FuncExpr))
+	{
+		FuncExpr   *fexpr = (FuncExpr *) expr;
+
+		if (fexpr->funcid == F_PG_DATUM_IMAGE_EQUAL &&
+			list_length(fexpr->args) == 2)
+		{
+			Node	   *left = linitial(fexpr->args),
+					   *right = lsecond(fexpr->args);
+
+			/* Support both orders of the operands */
+			if (IsA(left, Var) && ((Var *) left)->varattno == attnum)
+			{
+				Assert(((Var *) left)->vartype == exprType(right));
+				return right;
+			}
+			if (IsA(right, Var) && ((Var *) right)->varattno == attnum)
+			{
+				Assert(((Var *) right)->vartype == exprType(left));
+				return left;
+			}
+		}
+	}
+
+	return NULL;
 }
 
 /*
