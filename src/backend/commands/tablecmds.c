@@ -9155,7 +9155,7 @@ reconstructRawExpr(Relation rel, Node *cookedExpr)
 	if (list_length(parseResult) != 1)
 		ereport(ERROR,
 				(errcode(ERRCODE_INTERNAL_ERROR),
-				 errmsg("cannot re-parse constraint expr into a raw expression")));
+				 errmsg_internal("cannot re-parse constraint expr into a raw expression")));
 
 	if (IsA(linitial(parseResult), RawStmt))
 	{
