@@ -9085,25 +9085,28 @@ findUsableConstraintForAddGenStored(Relation rel, AttrNumber attnum,
 	{
 		Form_pg_constraint con = GETSTRUCT(conTup);
 
-		if (con->contype != CONSTRAINT_CHECK)
-			*reason = ADD_GEN_CONSTR_NOT_FOUND;
-		/* !conenforced implies !convalidated, but let's be explicit about it */
-		else if (!con->convalidated || !con->conenforced)
-			*reason = ADD_GEN_CONSTR_NOT_VALID;
-		else
+		if (con->contype == CONSTRAINT_CHECK)
 		{
-			char	   *conbin;
-			Datum		val;
-			Node	   *conexpr;
+			/* !conenforced implies !convalidated, but let's be explicit */
+			if (!con->convalidated || !con->conenforced)
+			{
+				*reason = ADD_GEN_CONSTR_NOT_VALID;
+			}
+			else
+			{
+				Datum		val;
+				char	   *conbin;
+				Node	   *conexpr;
 
-			val = SysCacheGetAttrNotNull(CONSTROID, conTup,
-										 Anum_pg_constraint_conbin);
-			conbin = TextDatumGetCString(val);
-			conexpr = stringToNode(conbin);
+				val = SysCacheGetAttrNotNull(CONSTROID, conTup,
+											 Anum_pg_constraint_conbin);
+				conbin = TextDatumGetCString(val);
+				conexpr = stringToNode(conbin);
 
-			foundExpr = matchDatumImageEqualOnVar(conexpr, attnum);
-			if (foundExpr == NULL)
-				*reason = ADD_GEN_CONSTR_SHAPE_MISMATCH;
+				foundExpr = matchDatumImageEqualOnVar(conexpr, attnum);
+				if (foundExpr == NULL)
+					*reason = ADD_GEN_CONSTR_SHAPE_MISMATCH;
+			}
 		}
 	}
 
