@@ -9028,6 +9028,33 @@ checkDependenciesForAddGenStored(Relation rel,
 					}
 					break;
 				}
+			case ConstraintRelationId:
+				{
+					if (get_constraint_type(foundObject.objectId) == CONSTRAINT_FOREIGN)
+					{
+						HeapTuple	conTup;
+						Form_pg_constraint con;
+
+						conTup = SearchSysCache1(CONSTROID, ObjectIdGetDatum(foundObject.objectId));
+						if (!HeapTupleIsValid(conTup))
+							elog(ERROR, "cache lookup failed for constraint %u", foundObject.objectId);
+						con = (Form_pg_constraint) GETSTRUCT(conTup);
+
+						if (con->confupdtype == FKCONSTR_ACTION_SETNULL ||
+							con->confupdtype == FKCONSTR_ACTION_SETDEFAULT ||
+							con->confupdtype == FKCONSTR_ACTION_CASCADE ||
+							con->confdeltype == FKCONSTR_ACTION_SETNULL ||
+							con->confdeltype == FKCONSTR_ACTION_SETDEFAULT)
+							ereport(ERROR,
+									(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+									 errmsg("cannot convert column \"%s\" to generated", colName),
+									 errdetail("Column \"%s\" is part of a foreign key with an ON DELETE / ON UPDATE action.",
+											   colName)));
+
+						ReleaseSysCache(conTup);
+					}
+					break;
+				}
 			default:
 				/* Other dependencies aren't a problem. */
 				break;

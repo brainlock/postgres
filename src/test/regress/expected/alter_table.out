@@ -5312,6 +5312,22 @@ alter table tgen.t2 alter column b
 ERROR:  generation expression is not immutable
 drop table tgen.t2;
 drop table tgen.t1;
+-- invalid: the column is part of a foreign key with on delete
+-- or on update actions
+create table tgen.tpkey (a int primary key);
+create table tgen.tfkey (a int primary key, b int references tgen.tpkey(a) on delete set null);
+alter table tgen.tfkey add constraint chk_gen check (pg_datum_image_equal(b, a + 1));
+alter table tgen.tfkey alter column b add generated using constraint chk_gen stored;
+ERROR:  cannot convert column "b" to generated
+DETAIL:  Column "b" is part of a foreign key with an ON DELETE / ON UPDATE action.
+drop table tgen.tfkey;
+create table tgen.tfkey (a int primary key, b int references tgen.tpkey(a) on update cascade);
+alter table tgen.tfkey add constraint chk_gen check (pg_datum_image_equal(b, a + 1));
+alter table tgen.tfkey alter column b add generated using constraint chk_gen stored;
+ERROR:  cannot convert column "b" to generated
+DETAIL:  Column "b" is part of a foreign key with an ON DELETE / ON UPDATE action.
+drop table tgen.tfkey;
+drop table tgen.tpkey;
 -- intentionally left behind for pg_dump/pg_restore tests
 create table tgen.t_simple (a int, b int not null);
 insert into tgen.t_simple (a, b) values (1, 2), (2, 3);
