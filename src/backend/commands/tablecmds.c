@@ -9215,7 +9215,8 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 						 const char *colName,
 						 Constraint *def)
 {
-	HeapTuple	tuple;
+	HeapTuple	tuple,
+				newtuple;
 	Form_pg_attribute attTup;
 	AttrNumber	attnum;
 	Bitmapset  *colRefs;
@@ -9227,6 +9228,9 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 	Node	   *newRawDefExpr;
 	RawColumnDefault *rawDefault;
 	List	   *cookedResult = NIL;
+	Datum		repl_val[Natts_pg_attribute];
+	bool		repl_null[Natts_pg_attribute];
+	bool		repl_repl[Natts_pg_attribute];
 
 	Assert(def->raw_expr == NULL);
 	Assert(def->cooked_expr == NULL);
@@ -9234,7 +9238,7 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 	Assert(def->generated_when == ATTRIBUTE_IDENTITY_ALWAYS);
 	Assert(def->generated_kind == ATTRIBUTE_GENERATED_STORED);
 
-	tuple = SearchSysCacheCopyAttName(RelationGetRelid(rel), colName);
+	tuple = SearchSysCacheAttName(RelationGetRelid(rel), colName);
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_COLUMN),
@@ -9304,13 +9308,33 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 				errdetail("Could not find CHECK constraint \"%s\".", def->conname));
 	}
 
-	/* Mark as generated stored in pg_attribute */
+	/**
+	 * Update pg_attribute: mark the column as generated stored, and clear
+	 * atthasmissing and attmissingval (they can never be set for a column which
+	 * has been originally defined as generated). */
 	pg_attribute = table_open(AttributeRelationId, RowExclusiveLock);
-	attTup->attgenerated = ATTRIBUTE_GENERATED_STORED;
-	CatalogTupleUpdate(pg_attribute, &tuple->t_self, tuple);
+
+	memset(repl_val, 0, sizeof(repl_val));
+	memset(repl_null, false, sizeof(repl_null));
+	memset(repl_repl, false, sizeof(repl_repl));
+
+	repl_val[Anum_pg_attribute_attgenerated - 1] = CharGetDatum(ATTRIBUTE_GENERATED_STORED);
+	repl_val[Anum_pg_attribute_atthasmissing - 1] = BoolGetDatum(false);
+	repl_null[Anum_pg_attribute_attmissingval - 1] = true;
+
+	repl_repl[Anum_pg_attribute_attgenerated - 1] = true;
+	repl_repl[Anum_pg_attribute_atthasmissing - 1] = true;
+	repl_repl[Anum_pg_attribute_attmissingval - 1] = true;
+
+	newtuple = heap_modify_tuple(tuple, RelationGetDescr(pg_attribute),
+								 repl_val, repl_null, repl_repl);
+
+	CatalogTupleUpdate(pg_attribute, &tuple->t_self, newtuple);
+
 	table_close(pg_attribute, RowExclusiveLock);
 
-	heap_freetuple(tuple);
+	heap_freetuple(newtuple);
+	ReleaseSysCache(tuple);
 
 	/* Make above changes visible */
 	CommandCounterIncrement();
