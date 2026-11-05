@@ -5118,7 +5118,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_AddGeneratedStored: /* ALTER COLUMN ADD GENERATED USING
 									 * CONSTRAINT */
 			ATSimplePermissions(cmd->subtype, rel,
-								ATT_TABLE | ATT_PARTITIONED_TABLE | ATT_FOREIGN_TABLE);
+								ATT_TABLE | ATT_PARTITIONED_TABLE);
 			ATSimpleRecursion(wqueue, rel, cmd, recurse, lockmode, context);
 			ATPrepAddGenStored(rel, cmd, recurse, recursing);
 			pass = AT_PASS_ADD_OTHERCONSTR;
