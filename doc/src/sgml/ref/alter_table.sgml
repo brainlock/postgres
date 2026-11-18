@@ -299,6 +299,11 @@ WITH ( MODULUS <replaceable class="parameter">numeric_literal</replaceable>, REM
       stored generated column with <literal>expr</literal> as its generation
       expression.
      </para>
+
+     <para>
+      Note: the column <replaceable class="parameter">column_name</replaceable>
+      must be defined without a <literal>DEFAULT</literal> value.
+     </para>
     </listitem>
    </varlistentry>
 

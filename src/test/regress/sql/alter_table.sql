@@ -3676,6 +3676,17 @@ drop table tgen.tfkey;
 
 drop table tgen.tpkey;
 
+-- invalid: the column has atthasmissing
+-- intentionally left behind for pg_dump/pg_restore tests
+create table tgen.t_missingval (a int);
+insert into tgen.t_missingval select generate_series(1, 3);
+alter table tgen.t_missingval add column b int default 42;
+insert into tgen.t_missingval (a) values (4);
+alter table tgen.t_missingval add constraint chk_gen
+  check (pg_datum_image_equal(b, case when a < 5 then 42 else a * 2 end));
+insert into tgen.t_missingval (a, b) values (5, 10);
+alter table tgen.t_missingval alter b add generated using constraint chk_gen stored;
+
 -- intentionally left behind for pg_dump/pg_restore tests
 create table tgen.t_simple (a int, b int not null);
 insert into tgen.t_simple (a, b) values (1, 2), (2, 3);
