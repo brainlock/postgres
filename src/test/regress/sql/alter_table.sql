@@ -3676,6 +3676,34 @@ drop table tgen.tfkey;
 
 drop table tgen.tpkey;
 
+-- some GUCs affect how values are represented at deparse time: ensure we can
+-- reconstruct the generator expression properly when they're set.
+select setting as prev_extra_float_digits from pg_settings where name = 'extra_float_digits' \gset
+select setting as prev_datestyle from pg_settings where name = 'DateStyle' \gset
+set extra_float_digits = 1;
+set datestyle = ISO;
+create table tgen.t_roundtrip (a_float8 float8, a_ts timestamp);
+alter table tgen.t_roundtrip
+    add constraint c1 check (pg_datum_image_equal(a_float8, '3.141592653589793'::float8)),
+    add constraint c2 check (pg_datum_image_equal(a_ts, '2026-01-02 14:59:03.141529'::timestamp));
+set extra_float_digits = 0; -- loses one digit
+set datestyle = German, MDY; -- output as DD.MM, but read back as MM.DD
+alter table tgen.t_roundtrip alter a_float8 add generated using constraint c1 stored;
+alter table tgen.t_roundtrip alter a_ts add generated using constraint c2 stored;
+
+-- visually verify that the generator expression is correct
+set extra_float_digits = 1;
+set datestyle = ISO;
+select pg_get_expr(adbin, 'tgen.t_roundtrip'::regclass) from pg_attrdef
+  where adrelid = 'tgen.t_roundtrip'::regclass;
+
+-- if the conversion was wrong, we wouldn't be able to insert default values here
+insert into tgen.t_roundtrip (a_float8, a_ts) values
+  (default, default);
+set extra_float_digits = :prev_extra_float_digits;
+set datestyle = :prev_datestyle;
+drop table tgen.t_roundtrip;
+
 -- invalid: the column has atthasmissing
 -- intentionally left behind for pg_dump/pg_restore tests
 create table tgen.t_missingval (a int);
