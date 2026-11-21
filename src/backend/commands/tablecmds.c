@@ -9762,7 +9762,21 @@ reconstructRawExpr(Relation rel, Node *cookedExpr)
 {
 	char	   *deparsedExpr;
 	List	   *ctx,
-			   *parseResult = NIL;
+			   *parseResult;
+	int			nestLevel;
+
+	/*
+	 * Some GUCs affect how values are represented in the deparsed tree.
+	 * Ensure they're set in a way that ensure we can round-trip safely.
+	 */
+	nestLevel = NewGUCNestLevel();
+
+	(void) set_config_option("datestyle", "ISO",
+							 PGC_USERSET, PGC_S_SESSION,
+							 GUC_ACTION_SAVE, true, 0, false);
+	(void) set_config_option("extra_float_digits", "3",
+							 PGC_USERSET, PGC_S_SESSION,
+							 GUC_ACTION_SAVE, true, 0, false);
 
 	ctx = deparse_context_for(RelationGetRelationName(rel),
 							  RelationGetRelid(rel));
@@ -9788,6 +9802,7 @@ reconstructRawExpr(Relation rel, Node *cookedExpr)
 			{
 				ResTarget  *resTarget = linitial(select->targetList);
 
+				AtEOXact_GUC(true, nestLevel);
 				return resTarget->val;
 			}
 		}
