@@ -9955,6 +9955,7 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 						 const char *colName,
 						 Constraint *def)
 {
+	Form_pg_class relTup;
 	HeapTuple	tuple;
 	Form_pg_attribute attTup;
 	AttrNumber	attnum;
@@ -9973,6 +9974,12 @@ ATExecAddGeneratedStored(AlteredTableInfo *tab,
 	Assert(def->conname != NULL);
 	Assert(def->generated_when == ATTRIBUTE_IDENTITY_ALWAYS);
 	Assert(def->generated_kind == ATTRIBUTE_GENERATED_STORED);
+
+	relTup = RelationGetForm(rel);
+	if (relTup->reloftype != InvalidOid)
+		ereport(ERROR,
+				errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				errmsg("generated columns are not supported on typed tables"));
 
 	tuple = SearchSysCacheCopyAttName(RelationGetRelid(rel), colName);
 	if (!HeapTupleIsValid(tuple))

@@ -3654,6 +3654,12 @@ alter table tgen.t1 alter column b
     add generated using constraint chk_gen stored;
 rollback;
 
+-- not allowed on a typed table
+create type tgen.ttype as (a int);
+create table tgen.ttab of tgen.ttype;
+alter table tgen.ttab add constraint chk_gen check (pg_datum_image_equal(a, 1));
+alter table tgen.ttab alter a add generated using constraint chk_gen stored;
+
 -- fails when the constraint does not exist
 alter table tgen.t1 alter column b
     add generated using constraint chk_gen_does_not_exist stored;
