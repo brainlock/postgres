@@ -786,6 +786,8 @@ static void ATPrepAddGenStored(Relation rel, AlterTableCmd *cmd, bool recurse, b
 static void checkDependenciesForAddGenStored(Relation rel,
 											 AttrNumber attnum,
 											 const char *colName);
+static char *checkTriggerQualForAddGenStored(Oid trigger_oid,
+											 int varno, AttrNumber attnum);
 static Node *findUsableConstraintForAddGenStored(Relation rel,
 												 AttrNumber attnum,
 												 const char *conname,
@@ -9627,6 +9629,70 @@ checkDependenciesForAddGenStored(Relation rel,
 					}
 					break;
 				}
+			case TriggerRelationId:
+				{
+					char	   *invalidTrg;
+
+					invalidTrg = checkTriggerQualForAddGenStored(foundObject.objectId,
+																 PRS2_NEW_VARNO,
+																 attnum);
+
+					if (invalidTrg != NULL)
+						ereport(ERROR,
+								errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+								errmsg("cannot convert column \"%s\" to generated", colName),
+								errdetail("Column NEW.\"%s\" is referenced by the WHEN clause of trigger \"%s\".",
+										  colName, invalidTrg));
+
+					break;
+				}
+			default:
+				/* Other dependencies aren't a problem. */
+				break;
+		}
+	}
+
+	systable_endscan(scan);
+
+	/*
+	 * Now scan again for dependencies on the whole row.
+	 */
+	ScanKeyInit(&key[2],
+				Anum_pg_depend_refobjsubid,
+				BTEqualStrategyNumber, F_INT4EQ,
+				Int32GetDatum(InvalidAttrNumber));
+
+	scan = systable_beginscan(pg_depend, DependReferenceIndexId, true,
+							  NULL, 3, key);
+
+	while (HeapTupleIsValid(depTup = systable_getnext(scan)))
+	{
+		Form_pg_depend dep = GETSTRUCT(depTup);
+		ObjectAddress foundObject;
+
+		foundObject.classId = dep->classid;
+		foundObject.objectId = dep->objid;
+		foundObject.objectSubId = dep->objsubid;
+
+		switch (foundObject.classId)
+		{
+			case TriggerRelationId:
+				{
+					char	   *invalidTrg;
+
+					invalidTrg = checkTriggerQualForAddGenStored(foundObject.objectId,
+																 PRS2_NEW_VARNO,
+																 InvalidAttrNumber);
+
+					if (invalidTrg != NULL)
+						ereport(ERROR,
+								errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+								errmsg("cannot convert column \"%s\" to generated", colName),
+								errdetail("The WHEN clause of trigger \"%s\" references a row which encompasses NEW.\"%s\".",
+										  invalidTrg, colName));
+
+					break;
+				}
 			default:
 				/* Other dependencies aren't a problem. */
 				break;
@@ -9635,6 +9701,65 @@ checkDependenciesForAddGenStored(Relation rel,
 
 	systable_endscan(scan);
 	table_close(pg_depend, AccessShareLock);
+}
+
+/*
+ * An update/insert before trigger's qual cannot reference a stored generated
+ * column. If the trigger is update/insert and a reference to the given
+ * varno/varattno is found in its qual expression, this returns the name of the
+ * trigger (so the caller can use it in the error message), NULL otherwise.
+ */
+static char *
+checkTriggerQualForAddGenStored(Oid trigger_oid, int varno, AttrNumber attnum)
+{
+	Relation	pg_trigger;
+	HeapTuple	tup;
+	Form_pg_trigger trg;
+	char	   *result = NULL;
+
+	pg_trigger = table_open(TriggerRelationId, AccessShareLock);
+
+	tup = get_catalog_object_by_oid(pg_trigger,
+									Anum_pg_trigger_oid, trigger_oid);
+	if (tup == NULL)
+		ereport(ERROR,
+				errmsg_internal("could not find trigger %u", trigger_oid));
+
+	trg = (Form_pg_trigger) GETSTRUCT(tup);
+
+	if (TRIGGER_FOR_BEFORE(trg->tgtype) &&
+		(TRIGGER_FOR_UPDATE(trg->tgtype) ||
+		 TRIGGER_FOR_INSERT(trg->tgtype)))
+	{
+		Datum		tgqual;
+		bool		tgqual_is_null;
+
+		tgqual = heap_getattr(tup, Anum_pg_trigger_tgqual,
+							  RelationGetDescr(pg_trigger),
+							  &tgqual_is_null);
+
+		if (!tgqual_is_null)
+		{
+			char	   *expr_str;
+			Node	   *expr;
+			Bitmapset  *refs = NULL;
+
+			expr_str = TextDatumGetCString(tgqual);
+			expr = stringToNode(expr_str);
+
+			pull_varattnos(expr, varno, &refs);
+
+			if (bms_is_member(attnum - FirstLowInvalidHeapAttributeNumber, refs))
+			{
+				result = pstrdup(NameStr(trg->tgname));
+			}
+		}
+	}
+
+	heap_freetuple(tup);
+	table_close(pg_trigger, AccessShareLock);
+
+	return result;
 }
 
 /*

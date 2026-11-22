@@ -3621,6 +3621,39 @@ alter table tgen.t_wholerow_2 add constraint chk_gen check (pg_datum_image_equal
 alter table tgen.t_wholerow_2 alter b add generated using constraint chk_gen stored;
 set search_path to :search_path;
 
+-- invalid: b is referenced in a triggers's WHEN (before, update or insert)
+begin;
+create function t_trigger_f() returns trigger as $$ begin return null; end $$ language plpgsql;
+create trigger t_trigger before insert or update on tgen.t1
+    for each row when (new.b is null) execute function t_trigger_f();
+alter table tgen.t1
+    add constraint chk_gen check (pg_datum_image_equal(b, a * 2));
+alter table tgen.t1 alter column b
+    add generated using constraint chk_gen stored;
+rollback;
+-- invalid: b is referenced in a triggers's WHEN through a whole-row var
+-- (before, update or insert)
+begin;
+create function t_trigger_f() returns trigger as $$ begin return null; end $$ language plpgsql;
+create trigger t_trigger before insert or update on tgen.t1
+    for each row when (new is null) execute function t_trigger_f();
+alter table tgen.t1
+    add constraint chk_gen check (pg_datum_image_equal(b, a * 2));
+alter table tgen.t1 alter column b
+    add generated using constraint chk_gen stored;
+rollback;
+
+-- OK to have a reference in an after trigger
+begin;
+create function t_trigger_f() returns trigger as $$ begin return null; end $$ language plpgsql;
+create trigger t_trigger after insert or update on tgen.t1
+    for each row when (new.b is null) execute function t_trigger_f();
+alter table tgen.t1
+    add constraint chk_gen check (pg_datum_image_equal(b, a * 2));
+alter table tgen.t1 alter column b
+    add generated using constraint chk_gen stored;
+rollback;
+
 -- fails when the constraint does not exist
 alter table tgen.t1 alter column b
     add generated using constraint chk_gen_does_not_exist stored;
