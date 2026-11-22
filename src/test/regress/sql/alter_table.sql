@@ -3556,6 +3556,28 @@ alter table only tgen.leaf alter column c
 
 drop table tgen.root cascade;
 
+-- test multiple inheritance:
+-- we can't transform a whole hierarchy if some nodes in the graphs isn't an
+-- inheritor of the root node we're looking at
+create table tgen.root1 (a int);
+create table tgen.root2 (a int);
+create table tgen.intermediate1 () inherits (tgen.root1, tgen.root2);
+create table tgen.intermediate2 () inherits (tgen.root1);
+create table tgen.leaf1 () inherits (tgen.intermediate1, tgen.intermediate2);
+alter table tgen.root1 add constraint chk_gen check (pg_datum_image_equal(a, 1));
+alter table tgen.root1 alter a add generated using constraint chk_gen stored;
+drop table tgen.root1 cascade;
+drop table tgen.root2;
+
+-- supported if we can transform the whole hierarchy starting at the root node
+create table tgen.root1 (a int);
+create table tgen.intermediate1 () inherits (tgen.root1);
+create table tgen.intermediate2 () inherits (tgen.root1);
+create table tgen.leaf1 () inherits (tgen.intermediate1, tgen.intermediate2);
+alter table tgen.root1 add constraint chk_gen check (pg_datum_image_equal(a, 1));
+alter table tgen.root1 alter a add generated using constraint chk_gen stored;
+drop table tgen.root1 cascade;
+
 -- tests for invalid invocations
 -- invalid: only supports STORED. The following are syntax errors.
 alter table tgen.t1 alter column b add generated using constraint chk_gen;

@@ -5483,6 +5483,42 @@ drop table tgen.root cascade;
 NOTICE:  drop cascades to 2 other objects
 DETAIL:  drop cascades to table tgen.intermediate
 drop cascades to table tgen.leaf
+-- test multiple inheritance:
+-- we can't transform a whole hierarchy if some nodes in the graphs isn't an
+-- inheritor of the root node we're looking at
+create table tgen.root1 (a int);
+create table tgen.root2 (a int);
+create table tgen.intermediate1 () inherits (tgen.root1, tgen.root2);
+NOTICE:  merging multiple inherited definitions of column "a"
+create table tgen.intermediate2 () inherits (tgen.root1);
+create table tgen.leaf1 () inherits (tgen.intermediate1, tgen.intermediate2);
+NOTICE:  merging multiple inherited definitions of column "a"
+alter table tgen.root1 add constraint chk_gen check (pg_datum_image_equal(a, 1));
+NOTICE:  merging constraint "chk_gen" with inherited definition
+alter table tgen.root1 alter a add generated using constraint chk_gen stored;
+ERROR:  cannot convert column "a" to generated
+DETAIL:  Converting only part of a multiple-inheritance hierarchy is not supported.
+HINT:  Run this command on a root node which covers the whole hierarchy, if there is one.
+drop table tgen.root1 cascade;
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table tgen.intermediate1
+drop cascades to table tgen.intermediate2
+drop cascades to table tgen.leaf1
+drop table tgen.root2;
+-- supported if we can transform the whole hierarchy starting at the root node
+create table tgen.root1 (a int);
+create table tgen.intermediate1 () inherits (tgen.root1);
+create table tgen.intermediate2 () inherits (tgen.root1);
+create table tgen.leaf1 () inherits (tgen.intermediate1, tgen.intermediate2);
+NOTICE:  merging multiple inherited definitions of column "a"
+alter table tgen.root1 add constraint chk_gen check (pg_datum_image_equal(a, 1));
+NOTICE:  merging constraint "chk_gen" with inherited definition
+alter table tgen.root1 alter a add generated using constraint chk_gen stored;
+drop table tgen.root1 cascade;
+NOTICE:  drop cascades to 3 other objects
+DETAIL:  drop cascades to table tgen.intermediate1
+drop cascades to table tgen.intermediate2
+drop cascades to table tgen.leaf1
 -- tests for invalid invocations
 -- invalid: only supports STORED. The following are syntax errors.
 alter table tgen.t1 alter column b add generated using constraint chk_gen;

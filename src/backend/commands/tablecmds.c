@@ -9513,6 +9513,51 @@ ATPrepAddGenStored(Relation rel, AlterTableCmd *cmd, bool recurse, bool recursin
 					errdetail("Converting only part of a partitioning or inheritance hierarchy is not supported."),
 					errhint("Use this command on the root table without specifying ONLY."));
 	}
+
+	/*
+	 * Prevent this command from being applied to an inheritance hierarchy
+	 * where any of the children has a parent *outside* of the hierarchy we're
+	 * trying to transform. Only check this at the top level.
+	 */
+	if (!recursing && recurse)
+	{
+		List	   *child_oids;
+		List	   *child_nparents = NULL;
+		ListCell   *l_oid,
+				   *l_nparents;
+
+		child_oids = find_all_inheritors(RelationGetRelid(rel), NoLock,
+										 &child_nparents);
+
+		forboth(l_oid, child_oids, l_nparents, child_nparents)
+		{
+			HeapTuple	tuple;
+			Form_pg_attribute attTup;
+			Oid			childrelid = lfirst_oid(l_oid);
+			int			nparents = lfirst_int(l_nparents);
+
+			if (childrelid == RelationGetRelid(rel))
+				continue;
+
+			tuple = SearchSysCacheAttName(childrelid, cmd->name);
+			if (!HeapTupleIsValid(tuple))
+				ereport(ERROR,
+						errcode(ERRCODE_UNDEFINED_COLUMN),
+						errmsg("column \"%s\" of relation \"%s\" does not exist",
+							   cmd->name, RelationGetRelationName(rel)));
+
+			attTup = (Form_pg_attribute) GETSTRUCT(tuple);
+
+			if (attTup->attinhcount > nparents)
+				ereport(ERROR,
+						errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg("cannot convert column \"%s\" to generated", cmd->name),
+						errdetail("Converting only part of a multiple-inheritance hierarchy is not supported."),
+						errhint("Run this command on a root node which covers the whole hierarchy, if there is one."));
+
+			ReleaseSysCache(tuple);
+		}
+	}
 }
 
 /*
