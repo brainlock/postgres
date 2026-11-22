@@ -9622,7 +9622,7 @@ checkDependenciesForAddGenStored(Relation rel,
 						ereport(ERROR,
 								errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 								errmsg("cannot convert column \"%s\" to generated", colName),
-								errdetail("Column \"%s\" is part of a foreign key with an ON DELETE / ON UPDATE action.",
+								errdetail("Column \"%s\" is part of a foreign key with a restricted ON DELETE / ON UPDATE action.",
 										  colName));
 
 					ReleaseSysCache(conTup);
