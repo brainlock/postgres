@@ -3699,8 +3699,8 @@ drop table tgen.t2;
 
 drop table tgen.t1;
 
--- invalid: the column is part of a foreign key with on delete
--- or on update actions
+-- invalid: the column is on the referencing side of a foreign key with
+-- on delete or on update actions
 create table tgen.tpkey (a int primary key);
 
 create table tgen.tfkey (a int primary key, b int references tgen.tpkey(a) on delete set null);
@@ -3711,6 +3711,12 @@ drop table tgen.tfkey;
 create table tgen.tfkey (a int primary key, b int references tgen.tpkey(a) on update cascade);
 alter table tgen.tfkey add constraint chk_gen check (pg_datum_image_equal(b, a + 1));
 alter table tgen.tfkey alter column b add generated using constraint chk_gen stored;
+drop table tgen.tfkey;
+
+-- OK to have the stored generated column on the referenced side
+create table tgen.tfkey (a int primary key, b int references tgen.tpkey(a) on update cascade);
+alter table tgen.tpkey add constraint chk_gen check (pg_datum_image_equal(a, 1));
+alter table tgen.tpkey alter a add generated using constraint chk_gen stored;
 drop table tgen.tfkey;
 
 drop table tgen.tpkey;
